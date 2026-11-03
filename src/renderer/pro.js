@@ -11,6 +11,7 @@ export const DEEP_GROUPS = [
   ['iosBackups', 'Old iPhone & iPad backups', 'Not updated for 30+ days.', 'trash'],
   ['devJunk', 'Developer junk', 'Build caches and node_modules of idle projects.', 'trash'],
   ['logsInstallers', 'Logs & leftover installers', 'Old logs and .dmg / .pkg files outside Downloads.', 'trash'],
+  ['mailAttachments', 'Mail attachments', 'Copies Mail saved when you opened attachments. They stay in the emails.', 'empty'],
 ];
 
 // ---------------------------------------------------------------------------
@@ -83,6 +84,7 @@ export function mockDeep(home = '/Users/angus') {
     iosBackups: g([it('Angus’s old iPhone backup', 'Library/Application Support/MobileSync/Backup/00008030-001', 61.2, { kind: 'other' })]),
     devJunk: g([it('Xcode DerivedData', 'Library/Developer/Xcode/DerivedData', 7.8, { mode: 'empty' })]),
     logsInstallers: g([it('App logs', 'Library/Logs', 0.9, { mode: 'empty' }), it('DaVinci_Resolve_19.dmg', 'Desktop/DaVinci_Resolve_19.dmg', 3.4, { isDir: false, kind: 'downloads' })]),
+    mailAttachments: g([it('Mail attachments', 'Library/Containers/com.apple.mail/Data/Library/Mail Downloads', 2.3, { kind: 'documents', mode: 'empty' })]),
   };
 }
 
@@ -246,6 +248,8 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
       <li><span>🏚️ App leftovers</span>${found('appLeftovers')}</li>
       <li><span>📱 Old iPhone backups</span>${found('iosBackups')}</li>
       <li><span>🛠️ Developer junk</span>${found('devJunk')}</li>
+      <li><span>📎 Mail attachments</span>${found('mailAttachments')}</li>
+      <li><span>🚦 Rush Hour: switch off any startup item</span></li>
       <li><span>🧾 Logs &amp; old installers</span>${found('logsInstallers')}</li>
       <li><span>📅 Weekly check-up with alert</span></li>
     </ul>`;

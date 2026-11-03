@@ -7,6 +7,7 @@ const { scan, suggestions, defaultRoots } = require('./scanner');
 const { createLicence } = require('./licence');
 const { deepSuggestions, sweepOnly, sizeOf, sameFile } = require('./deepclean');
 const config = require('./config');
+const cityhall = require('./cityhall');
 
 let win;
 let currentScan = null;
@@ -270,3 +271,62 @@ function startWeeklyCheckup() {
   setTimeout(weeklyCheckup, 60000);
   setInterval(weeklyCheckup, 3600000);
 }
+
+// --- City Hall: Moving Day (apps) + Rush Hour (startup items) ---------------
+let appsCache = null;
+ipcMain.handle('apps:list', async (_e, fresh) => {
+  if (process.platform !== 'darwin') return { supported: false, apps: [] };
+  if (!appsCache || fresh) appsCache = cityhall.listApps(os.homedir());
+  try {
+    return { supported: true, apps: await appsCache };
+  } catch (err) {
+    appsCache = null;
+    return { supported: true, apps: [], error: String(err.message || err) };
+  }
+});
+
+// Moves an app and all of its ~/Library files to the Trash. The file list is
+// worked out again here rather than trusted from the page. Counts towards the
+// free Demolish allowance like any other demolish.
+ipcMain.handle('apps:uninstall', async (_e, appPath) => {
+  const apps = await (appsCache || cityhall.listApps(os.homedir()));
+  const app = apps.find((a) => a.path === appPath);
+  if (!app) return { ok: false, error: 'App not found. Rescan City Hall.' };
+  if (await cityhall.isRunning(app.path)) return { ok: false, error: `Quit ${app.name} first, then move it out.` };
+  const files = await cityhall.appFiles(app, os.homedir());
+  const paths = [app.path, ...files.map((f) => f.path)];
+  const sizes = await measure(paths);
+  const blocked = plan.checkAllowance(sum(sizes, paths));
+  if (blocked) return { ok: false, ...blocked };
+  const results = await trashPaths(paths);
+  plan.recordDemolished(sum(sizes, results.filter((r) => r.ok).map((r) => r.path)));
+  pushPlan();
+  appsCache = null;
+  const appRes = results[0];
+  if (!appRes.ok) return { ok: false, error: /permission|not permitted|EACCES|EPERM/i.test(appRes.error) ? 'macOS needs your password for this one. Drag it to the Bin in Finder.' : appRes.error, results };
+  return { ok: true, freed: sum(sizes, results.filter((r) => r.ok).map((r) => r.path)), results };
+});
+
+ipcMain.handle('startup:list', async () => {
+  if (process.platform !== 'darwin') return { supported: false, items: [] };
+  return { supported: true, items: await cityhall.listStartup(os.homedir()) };
+});
+
+// Switch off a commuter: unload it and move its plist to the Trash (so it can
+// be put back). Only your own LaunchAgents; system ones need an admin. Free
+// plan: only ones Neighbourhood Watch flagged.
+ipcMain.handle('startup:remove', async (_e, file) => {
+  const items = await cityhall.listStartup(os.homedir());
+  const item = items.find((i) => i.path === file);
+  if (!item) return { ok: false, error: 'Not found any more.' };
+  if (!item.canRemove) return { ok: false, error: 'This one is for every user. Remove it in Finder with your password.' };
+  if (!item.freeToRemove && !plan.isPro()) return { ok: false, error: 'pro' };
+  await cityhall.unloadAgent(file);
+  const [res] = await trashPaths([file]);
+  return res.ok ? { ok: true } : { ok: false, error: res.error };
+});
+
+ipcMain.handle('startup:openSettings', () => {
+  if (process.platform === 'darwin') shell.openExternal('x-apple.systempreferences:com.apple.LoginItems-Settings.extension');
+  return true;
+});

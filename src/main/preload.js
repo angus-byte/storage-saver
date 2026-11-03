@@ -28,4 +28,10 @@ contextBridge.exposeInMainWorld('storage', {
   },
   deepScan: () => ipcRenderer.invoke('deep:scan'),
   trashDuplicate: (p, keep) => ipcRenderer.invoke('fs:trashDuplicate', p, keep),
+  // City Hall
+  listApps: (fresh) => ipcRenderer.invoke('apps:list', fresh),
+  uninstallApp: (p) => ipcRenderer.invoke('apps:uninstall', p),
+  listStartup: () => ipcRenderer.invoke('startup:list'),
+  removeStartup: (p) => ipcRenderer.invoke('startup:remove', p),
+  openLoginItems: () => ipcRenderer.invoke('startup:openSettings'),
 });

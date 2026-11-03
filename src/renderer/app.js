@@ -1,5 +1,6 @@
 import * as THREE from './vendor/three.module.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
+import { initCityHall } from './cityhall.js';
 import { squarify } from './treemap.js';
 import { mockTree, mockSuggestions, mockDisk } from './mock.js';
 import { initPro, demoPlanApi, mockDeep } from './pro.js';
@@ -2461,6 +2462,7 @@ api.diskInfo().then((d) => {
   state.disk = d;
   renderDisk();
 });
+initCityHall({ api, fmt, esc, toast, pro, DEMO });
 if (DEMO) {
   $('btn-scan').querySelector('span').textContent = 'Scan (demo data)';
   runScan(null);
