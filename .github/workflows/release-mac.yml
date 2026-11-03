@@ -1,0 +1,51 @@
+name: Build Mac app
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (e.g. v0.2.0)
+        required: true
+        default: v0.2.0
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      # Unsigned build (no Apple Developer certificate yet). Ad-hoc sign so
+      # Apple silicon Macs will run it after the user chooses "Open Anyway".
+      - run: npx electron-builder --mac dir --arm64 --x64 --publish never
+      - run: |
+          for app in dist/mac-arm64/*.app dist/mac/*.app; do
+            codesign --force --deep --sign - "$app"
+          done
+      - run: npx electron-builder --mac dmg zip --arm64 --prepackaged "dist/mac-arm64/Storage Saver.app" --publish never
+      - run: npx electron-builder --mac dmg zip --x64 --prepackaged "dist/mac/Storage Saver.app" --publish never
+      - run: ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: storage-saver-mac
+          path: |
+            dist/*.dmg
+            dist/*.zip
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --prerelease --target "$GITHUB_SHA" --title "Storage Saver $TAG" --notes "Unsigned Mac build. Apple silicon: *-arm64.dmg. Intel: the other .dmg. First launch: right-click the app, choose Open, then Open again."
+          gh release upload "$TAG" dist/*.dmg dist/*.zip --clobber

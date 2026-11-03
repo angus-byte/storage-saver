@@ -23,11 +23,13 @@ Click **Scan my files** (scans your home folder) or **Choose folder…** for any
 
 `npm run build:demo` writes `demo/index.html`, a single file that runs the same UI on sample data in any browser (no scanning or deleting).
 
-## Build an installer
+## Install on a Mac
 
-```bash
-npm run dist   # .dmg on macOS, .exe installer on Windows
-```
+Download the latest `.dmg` from [Releases](https://github.com/angus-byte/storage-saver/releases) (`-arm64` for Apple silicon, otherwise the Intel one), open it and drag Storage Saver to Applications.
+
+The build is not notarised with Apple yet, so on first launch macOS will say it cannot verify the developer. Right-click the app, choose **Open**, then **Open** again. If macOS reports the app as "damaged", run `xattr -dr com.apple.quarantine "/Applications/Storage Saver.app"` once in Terminal.
+
+Builds come from the **Build Mac app** GitHub Action (run it by hand or push a `v*` tag). Locally on a Mac, `npm run dist` writes the `.dmg` to `dist/`.
 
 ## Layout
 
