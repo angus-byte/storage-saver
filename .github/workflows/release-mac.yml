@@ -1,0 +1,82 @@
+name: Build Mac app
+
+# Builds Storage Saver for macOS and attaches the .dmg files to a GitHub
+# release named after the version in package.json.
+#
+# Signing + notarisation happens automatically when these repository secrets
+# exist (Settings → Secrets and variables → Actions):
+#   CSC_LINK                    base64 of the "Developer ID Application" .p12
+#   CSC_KEY_PASSWORD            password of that .p12
+#   APPLE_ID                    Apple ID email
+#   APPLE_APP_SPECIFIC_PASSWORD app-specific password from appleid.apple.com
+#   APPLE_TEAM_ID               10-character team id
+# Without them the app is ad-hoc signed and needs right-click → Open once.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, city-view]
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+      - name: Decide on signing
+        id: sign
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+        run: echo "signed=$([ -n "$CSC_LINK" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Build signed and notarised
+        if: steps.sign.outputs.signed == 'true'
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx electron-builder --mac dmg zip --arm64 --x64 --publish never
+
+      - name: Build unsigned (ad-hoc)
+        if: steps.sign.outputs.signed != 'true'
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npx electron-builder --mac dir --arm64 --x64 --publish never
+          for app in dist/mac-arm64/*.app dist/mac/*.app; do codesign --force --deep --sign - "$app"; done
+          npx electron-builder --mac dmg zip --arm64 --prepackaged "dist/mac-arm64/Storage Saver.app" --publish never
+          npx electron-builder --mac dmg zip --x64 --prepackaged "dist/mac/Storage Saver.app" --publish never
+
+      - run: ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: storage-saver-mac
+          path: |
+            dist/*.dmg
+            dist/*.zip
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNED: ${{ steps.sign.outputs.signed }}
+        run: |
+          TAG="v$(node -p "require('./package.json').version")"
+          if [ "$SIGNED" = true ]; then
+            NOTES="Signed and notarised Mac build. Apple silicon: *-arm64.dmg. Intel: *-x64.dmg."
+          else
+            NOTES="Unsigned Mac build. Apple silicon: *-arm64.dmg. Intel: *-x64.dmg. First launch: right-click the app, choose Open, then Open again."
+          fi
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --prerelease --target "$GITHUB_SHA" --title "Storage Saver $TAG" --notes "$NOTES"
+          gh release upload "$TAG" dist/*.dmg dist/*.zip --clobber

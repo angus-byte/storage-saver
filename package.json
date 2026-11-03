@@ -1,6 +1,6 @@
 {
   "name": "storage-saver",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Keeps your computer's storage low. 3D visualiser of where your space goes, plus safe one-click cleanup.",
   "main": "src/main/main.js",
   "scripts": {
@@ -8,22 +8,48 @@
     "postinstall": "node scripts/copy-vendor.js",
     "test": "node --test test/*.test.js",
     "build:demo": "node scripts/build-demo.js",
-    "dist": "electron-builder"
+    "dist": "electron-builder --mac dmg"
   },
   "author": "Angus",
   "license": "MIT",
   "devDependencies": {
     "electron": "^33.2.0",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^26.18.0"
   },
   "dependencies": {
     "three": "^0.170.0"
   },
   "build": {
     "appId": "com.sommarfilms.storagesaver",
-    "productName": "Storage Saver",
-    "files": ["src/**/*", "package.json"],
-    "mac": { "category": "public.app-category.utilities", "target": ["dmg"] },
-    "win": { "target": ["nsis"] }
+    "productName": "Gigapolis",
+    "files": [
+      "src/**/*",
+      "package.json",
+      "!src/renderer/vendor/*.map"
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        "dmg"
+      ],
+      "icon": "build/icon.png",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "notarize": true,
+      "extendInfo": {
+        "NSDesktopFolderUsageDescription": "Gigapolis measures what is on your Desktop so it can show it in the city.",
+        "NSDocumentsFolderUsageDescription": "Gigapolis measures your Documents so it can show them in the city.",
+        "NSDownloadsFolderUsageDescription": "Gigapolis measures your Downloads so it can show them in the city.",
+        "NSRemovableVolumesUsageDescription": "Gigapolis can measure external drives you choose.",
+        "NSNetworkVolumesUsageDescription": "Gigapolis can measure network drives you choose.",
+        "NSPhotoLibraryUsageDescription": "Gigapolis measures the size of your Photos library."
+      },
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
   }
 }
