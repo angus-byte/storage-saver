@@ -826,7 +826,7 @@ function decorateTip(b, w, h, d) {
   piece(boxGeo, fenceMat, x, top, z - d / 2, w, 1.2, 0.04, false);
   piece(boxGeo, fenceMat, x - w / 2, top, z, 0.04, 1.2, d, false);
   piece(boxGeo, fenceMat, x + w / 2, top, z, 0.04, 1.2, d, false);
-  textSign('TIP', x, top + 2.2, z + d / 2 + 0.1, Math.min(4, w * 0.8), 1.0, '#f6c90e', '#1d2230');
+  textSign('TIP', x, top + 2.2, z + d / 2 + 0.3, Math.min(4, w * 0.8), 1.0, '#f6c90e', '#1d2230');
   // Compactor (tracked machine) pushing rubbish.
   const g = addGroup(x + w * 0.25, top, z + d * 0.15);
   g.rotation.y = -0.6;
@@ -879,18 +879,18 @@ function decorateStudio(b, w, h, d, item) {
   if (alongX) piece(cylGeo, hangarRoofMat, x - w / 2, top, z, d * 0.55, w, d).rotation.set(0, 0, -Math.PI / 2);
   else piece(cylGeo, hangarRoofMat, x, top, z - d / 2, w, d, w * 0.55).rotation.set(Math.PI / 2, 0, 0);
   // Big painted name and a stage number.
-  textSign(name + ' STUDIOS', x, base + h * 0.72, front + 0.08, Math.min(w * 0.95, 14), Math.min(w * 0.95, 14) * 0.25, '#d94f4f', '#fff4d6', { border: '#fff4d6' });
-  textSign('STAGE ' + (1 + (hashName(name) * 9) | 0), x, base + h * 0.35, front + 0.08, Math.min(w * 0.6, 7), Math.min(w * 0.6, 7) * 0.28, '#1d2230', '#ffffff');
+  textSign(name + ' STUDIOS', x, base + h * 0.72, front + 0.3, Math.min(w * 0.95, 14), Math.min(w * 0.95, 14) * 0.25, '#d94f4f', '#fff4d6', { border: '#fff4d6' });
+  textSign('STAGE ' + (1 + (hashName(name) * 9) | 0), x, base + h * 0.35, front + 0.3, Math.min(w * 0.6, 7), Math.min(w * 0.6, 7) * 0.28, '#1d2230', '#ffffff');
   // Big sliding stage door.
-  piece(boxGeo, darkMat, x - w * 0.2, base, front + 0.12, Math.min(w * 0.4, 6), Math.min(h * 0.4, 6), 0.1, false);
-  piece(boxGeo, awningMat, x - w * 0.2, base + Math.min(h * 0.4, 6), front + 0.14, Math.min(w * 0.4, 6) + 0.3, 0.25, 0.12, false);
+  piece(boxGeo, darkMat, x - w * 0.2, base, front + 0.1, Math.min(w * 0.4, 6), Math.min(h * 0.4, 6), 0.1, false);
+  piece(boxGeo, awningMat, x - w * 0.2, base + Math.min(h * 0.4, 6), front + 0.18, Math.min(w * 0.4, 6) + 0.3, 0.25, 0.12, false);
   // Water tower with the studio badge.
   const tx = x + w * 0.3;
   const tz = z - d * 0.25;
   for (const [sx, sz] of [[-0.6, -0.6], [0.6, -0.6], [-0.6, 0.6], [0.6, 0.6]]) piece(cylGeo, poleMat, tx + sx, top, tz + sz, 0.1, 4.5, 0.1, false);
   piece(cylGeo, whiteMat, tx, top + 4.5, tz, 2.0, 2.2, 2.0);
   piece(coneGeo, awningMat, tx, top + 6.7, tz, 2.2, 1.0, 2.2);
-  textSign(name[0] || 'M', tx, top + 5.6, tz + 1.05, 1.3, 1.3, '#d94f4f', '#ffffff', { size: 90 });
+  textSign(name[0] || 'M', tx, top + 5.6, tz + 1.2, 1.3, 1.3, '#d94f4f', '#ffffff', { size: 90 });
   // Lighting rigs along the roof edge.
   for (let i = -1; i <= 1; i++) {
     const lx = x + i * w * 0.3;
@@ -962,7 +962,7 @@ function decorateFactory(b, w, h, d) {
   piece(cylGeo, poleMat, x + w * 0.3, base, front + 1.0, 0.12, 3.2, 0.12, false);
   piece(boxGeo, poleMat, x, base + 3.1, front + 1.0, w * 0.65, 0.2, 0.3, false);
   piece(boxGeo, darkMat, x, base, front + 0.14, Math.min(3, w * 0.4), Math.min(2.6, h * 0.4), 0.1, false); // roller door
-  textSign('SYSTEM WORKS', x, base + Math.min(2.6, h * 0.4) + 1.1, front + 0.08, Math.min(w * 0.9, 9), Math.min(w * 0.9, 9) * 0.22, '#2b3240', '#f6c90e', { size: 64 });
+  textSign('SYSTEM WORKS', x, base + Math.min(2.6, h * 0.4) + 1.1, front + 0.3, Math.min(w * 0.9, 9), Math.min(w * 0.9, 9) * 0.22, '#2b3240', '#f6c90e', { size: 64 });
 }
 
 // --- Apartments: balconies on every side, washing lines, dishes, colour.
@@ -1024,7 +1024,7 @@ function decorateMarket(b, w, h, d) {
   const bw = Math.min(w * 0.8, 6);
   piece(boxGeo, benchMat, x, top, z + d / 2 - 0.3, bw, 2.6, 0.15);
   for (let k = 0; k < Math.floor(bw * 2.2); k++) piece(boxGeo, propMat([0xfff176, 0xff8a80, 0x80d8ff, 0xccff90][k % 4]), x - bw / 2 + 0.4 + (k % Math.floor(bw * 1.1)) * 0.9 * (bw / Math.max(1, bw)), top + 0.5 + (k % 3) * 0.7, z + d / 2 - 0.2, 0.55, 0.55, 0.03, false);
-  textSign('DESKTOP', x, top + 3.1, z + d / 2 - 0.3, bw, bw * 0.22, '#8b5e3c', '#fff4d6', { size: 70 });
+  textSign('DESKTOP', x, top + 3.1, z + d / 2 - 0.1, bw, bw * 0.22, '#8b5e3c', '#fff4d6', { size: 70 });
   // Coffee cart.
   const c = addGroup(x - w * 0.35, top, z - d * 0.35);
   part(c, boxGeo, whiteMat, 0, 0.3, 0, 1.4, 0.9, 0.8);
