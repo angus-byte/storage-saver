@@ -16,6 +16,9 @@ const SEASON_CSS = `
 #frost { position: absolute; inset: 0; pointer-events: none; z-index: 1; opacity: calc(var(--winter, 0) * (0.9 - var(--night, 0) * 0.55));
   background: radial-gradient(ellipse 120% 95% at 50% 50%, rgba(255,255,255,0) 62%, rgba(232,244,255,.55) 86%, rgba(246,251,255,.85) 100%); }
 #season-wrap { position: relative; }
+#btn-season { display: inline-flex; align-items: center; gap: 6px; }
+#btn-season .chev { opacity: .7; transition: transform .2s ease; }
+#season-wrap.open #btn-season .chev { transform: rotate(180deg); }
 #season-menu { position: absolute; top: calc(100% + 8px); right: 0; min-width: 190px; padding: 6px; border-radius: 16px; background: var(--panel); border: 1px solid var(--border); box-shadow: var(--shadow); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); display: flex; flex-direction: column; gap: 2px; }
 #season-menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 10px; border: none; border-radius: 11px; background: none; color: var(--text); font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
 #season-menu button:hover { background: var(--soft-2); }
@@ -61,7 +64,8 @@ export function initSeasons(ctx) {
 
   function renderUi() {
     const cur = SEASONS.find((s) => s[0] === season);
-    btn.textContent = `${cur[1]} ${cur[2]}`;
+    btn.innerHTML = `${cur[1]} ${cur[2]} <svg class="chev" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    btn.setAttribute('aria-haspopup', 'menu');
     const pro = isPro();
     menu.innerHTML = SEASONS.map(([id, icon, label]) => {
       const locked = id !== 'summer' && !pro;
@@ -74,12 +78,14 @@ export function initSeasons(ctx) {
     e.stopPropagation();
     renderUi();
     menu.hidden = !menu.hidden;
+    wrap.classList.toggle('open', !menu.hidden);
   };
   menu.onclick = (e) => {
     const b = e.target.closest('button[data-season]');
     if (!b) return;
     e.stopPropagation();
     menu.hidden = true;
+    wrap.classList.remove('open');
     const id = b.dataset.season;
     if (id !== 'summer' && !isPro()) {
       showUpgrade('seasons');
@@ -89,7 +95,10 @@ export function initSeasons(ctx) {
     }
     setSeason(id);
   };
-  document.addEventListener('click', () => (menu.hidden = true));
+  document.addEventListener('click', () => {
+    menu.hidden = true;
+    wrap.classList.remove('open');
+  });
 
   function setSeason(id, { save = true } = {}) {
     season = id;
