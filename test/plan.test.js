@@ -146,16 +146,16 @@ test('app matching by name and bundle id', () => {
 test('owner key unlocks Pro offline; only its hash is configured', async () => {
   const crypto = require('crypto');
   const salt = 'testsalt';
-  const hash = crypto.scryptSync('GIGA-TEST-OWNR', salt, 32, { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }).toString('hex');
+  const hash = crypto.scryptSync('GIGA-TEST-OWNR-KEY1-2345-6789', salt, 32, { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }).toString('hex');
   const dir = tmp();
   const f = fakeFetch(() => new Error('should not call the network'));
   const lic = createLicence({ dir, cfg: { ...cfg, ownerKey: { salt, hash } }, fetchImpl: f });
   assert.equal((await lic.activate('wrong-key')).ok, false);
-  const r = await lic.activate(' giga-test-ownr ');
+  const r = await lic.activate(' giga-test-ownr-key1-2345-6789 ');
   assert.ok(r.ok);
   assert.equal(r.status.plan, 'pro');
   assert.equal(r.status.keyHint, 'Owner key');
-  assert.ok(!f.calls.some((c) => c.endpoint === 'activate' && c.params.license_key.includes('TEST-OWNR')));
+  assert.ok(!f.calls.some((c) => c.endpoint === 'activate' && c.params.license_key.includes('TEST')));
   // Survives a restart, far beyond the offline grace period.
   const later = createLicence({ dir, cfg: { ...cfg, ownerKey: { salt, hash } }, now: () => Date.now() + 400 * 86400000 });
   assert.equal(later.status().plan, 'pro');
@@ -170,4 +170,14 @@ test('owner key unlocks Pro offline; only its hash is configured', async () => {
 test('the real owner key is not in the repo', () => {
   const real = require('../src/main/config').ownerKey;
   assert.ok(real && /^[0-9a-f]{64}$/.test(real.hash));
+});
+
+test('owner key accepts sloppy typing and smart dashes', async () => {
+  const crypto = require('crypto');
+  const salt = 's2';
+  const hash = crypto.scryptSync('GIGA-ABCD-EFGH-JKLM-NPQR-STUV', salt, 32, { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }).toString('hex');
+  for (const typed of ['giga abcd efgh jklm npqr stuv', 'GIGA–ABCD–EFGH–JKLM–NPQR–STUV', 'ABCDEFGHJKLMNPQRSTUV', ' `GIGA-ABCD-EFGH-JKLM-NPQR-STUV` ']) {
+    const lic = createLicence({ dir: tmp(), cfg: { ...cfg, ownerKey: { salt, hash } }, fetchImpl: fakeFetch(() => new Error('x')) });
+    assert.ok((await lic.activate(typed)).ok, typed);
+  }
 });

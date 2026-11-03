@@ -28,10 +28,18 @@ function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now
   // hand-edited plan file can't fake it.
   function isOwnerKey(key) {
     const o = cfg.ownerKey;
-    if (!o || !o.salt || !o.hash || !key) return false;
+    if (!o || !o.salt || !o.hash || !canonicalOwnerKey(key || '')) return false;
     const want = Buffer.from(o.hash, 'hex');
-    const got = crypto.scryptSync(String(key).trim().toUpperCase(), o.salt, want.length, { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
+    const got = crypto.scryptSync(canonicalOwnerKey(key), o.salt, want.length, { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
     return crypto.timingSafeEqual(got, want);
+  }
+  // Forgiving about how the key was typed or pasted: case, spaces, smart or
+  // missing dashes, a dropped "GIGA" prefix.
+  function canonicalOwnerKey(key) {
+    let k = String(key).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (k.length === 20) k = 'GIGA' + k;
+    if (!/^GIGA[A-Z0-9]{20}$/.test(k)) return '';
+    return 'GIGA-' + k.slice(4).match(/.{4}/g).join('-');
   }
   let ownerOk = !!(data.licence && data.licence.owner && isOwnerKey(data.licence.key));
 
@@ -82,7 +90,7 @@ function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now
     const key = String(rawKey || '').trim();
     if (!key) return { ok: false, error: 'Enter your licence key.' };
     if (isOwnerKey(key)) {
-      data.licence = { key: key.toUpperCase(), owner: true, email: null, status: 'active', validatedAt: now() };
+      data.licence = { key: canonicalOwnerKey(key), owner: true, email: null, status: 'active', validatedAt: now() };
       ownerOk = true;
       save();
       return { ok: true, status: status() };
