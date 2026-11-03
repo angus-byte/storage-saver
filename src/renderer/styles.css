@@ -1,5 +1,5 @@
 :root {
-  --bg: #3cb6b4;
+  --bg: #3aa9ab;
   --panel: rgba(16, 22, 34, 0.92);
   --border: #222b3d;
   --text: #e8edf5;
@@ -18,7 +18,7 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif; overflow: hidden; }
-#scene { position: absolute; inset: 0; }
+#scene { position: absolute; inset: 0; background: radial-gradient(ellipse 90% 75% at 55% 30%, #94e0da 0%, #62c8c5 45%, #3aa9ab 100%); }
 #scene canvas { display: block; }
 
 #panel {

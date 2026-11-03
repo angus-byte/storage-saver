@@ -63,7 +63,8 @@ const state = { disk: null, tree: null, suggestions: null, path: [], selected: n
 // Scene setup
 // ---------------------------------------------------------------------------
 const container = document.getElementById('scene');
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+renderer.setClearColor(0x000000, 0); // the CSS gradient behind the canvas is the sky
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
@@ -74,8 +75,8 @@ container.appendChild(renderer.domElement);
 
 const SKY = 0x3cb6b4;
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(SKY);
-scene.fog = new THREE.Fog(SKY, 320, 700);
+scene.background = null;
+scene.fog = new THREE.Fog(0x4fbdbb, 320, 700);
 
 const camera = new THREE.PerspectiveCamera(32, window.innerWidth / window.innerHeight, 0.5, 2000);
 camera.position.set(165, 150, 185);
