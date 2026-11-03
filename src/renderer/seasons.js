@@ -118,8 +118,8 @@ export function initSeasons(ctx) {
 
   // --- Ground, roofs, clouds -------------------------------------------------
   const TINT = {
-    autumn: { park: 0xc9b35e, pavement: 0xe3d7c3, roof: 0xb9aea2, kerb: 0xe8e0d2, plinth: 0xcdc6bb, cloud: 0xfff1e0 },
-    winter: { park: 0xf2f6fa, pavement: 0xedf2f7, roof: 0xf5f8fb, kerb: 0xf3f7fa, plinth: 0xdbe3ec, cloud: 0xe2e8ef },
+    autumn: { park: 0xc9b35e, pavement: 0xe3d7c3, roof: 0xb9aea2, kerb: 0xe8e0d2, plinth: 0x35302d, cloud: 0xfff1e0 },
+    winter: { park: 0xf2f6fa, pavement: 0xedf2f7, roof: 0xf5f8fb, kerb: 0xf3f7fa, plinth: 0x3b4552, cloud: 0xe2e8ef },
   };
   const base = {};
   for (const [name, m] of Object.entries(mats)) if (m) base[name] = m.color.getHex();
