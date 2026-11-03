@@ -67,9 +67,9 @@ const KIND_LABELS = { cache: 'Caches & temp', trash: 'Trash', downloads: 'Downlo
 const BASE_W = 112;
 const BASE_D = 86;
 const STREET = 5; // gap between districts
-const SIDEWALK = 1.6; // pavement ring inside a district
-const LOT_GAP = 0.6; // gap between buildings in a district
-const MAX_H = 62;
+const SIDEWALK = 1.0; // pavement ring inside a district
+const LOT_GAP = 0.45; // gap between buildings in a district
+const MAX_H = 85;
 
 // ---------------------------------------------------------------------------
 // State
@@ -458,7 +458,7 @@ function clearBlocks() {
 
 let maxSizeInView = 1;
 function heightFor(size) {
-  return 4 + MAX_H * Math.sqrt(size / Math.max(maxSizeInView, 1));
+  return 6 + MAX_H * Math.sqrt(size / Math.max(maxSizeInView, 1));
 }
 // Lot (footprint) area grows slowly with size so big items become towers, not slabs.
 function lotFor(size) {
@@ -657,13 +657,13 @@ function placeBuilding(r, depth, gap) {
   // even when a suburb has room to spare.
   // Buildings fill most of their lot so they read big; scale is deliberately
   // generous next to streets, cars and people.
-  const side = Math.sqrt(r.item.size) * 1.5;
+  const side = Math.sqrt(r.item.size) * 2;
   const w = Math.max(0.3, Math.min(r.w - gap, side * (0.95 + Math.random() * 0.1)));
   const d = Math.max(0.3, Math.min(r.h - gap, side * (0.95 + Math.random() * 0.1)));
   if (w < 0.6 || d < 0.6) return 0;
   let h = heightFor(item.size);
   const landmark = landmarkFor(item);
-  if (landmark === 'library') h = Math.min(h, 13);
+  if (landmark === 'library') h = Math.min(h, 17);
   if (LANDMARK_MAX_H[landmark]) h = Math.min(h, LANDMARK_MAX_H[landmark]);
   const plain = { library: 0xe9e2d0, tip: 0x7a6a58, studio: 0xd8cfbe, market: 0xd8d2c6 };
   const mat = plain[landmark] ? new THREE.MeshStandardMaterial({ color: plain[landmark], roughness: 0.9 }) : facadeMaterial(item.kind, w, h, d, Math.floor(Math.random() * 4));
@@ -734,7 +734,7 @@ function landmarkFor(item) {
   if (n === 'desktop') return 'market';
   return null;
 }
-const LANDMARK_MAX_H = { tip: 4.5, market: 3.4, studio: 18, factory: 17 };
+const LANDMARK_MAX_H = { tip: 6, market: 4.5, studio: 24, factory: 22 };
 
 // Painted sign: text on a plane, facing +z. Added straight to the scene (no
 // build pop) so the texture never gets squashed.
