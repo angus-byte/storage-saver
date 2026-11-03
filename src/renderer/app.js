@@ -279,6 +279,8 @@ const coneGeo = new THREE.ConeGeometry(0.5, 1, 8);
 coneGeo.translate(0, 0.5, 0);
 const cylGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 10);
 cylGeo.translate(0, 0.5, 0);
+const barrelGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 28);
+barrelGeo.translate(0, 0.5, 0);
 const pavementMat = new THREE.MeshStandardMaterial({ color: 0xdedbd3, roughness: 0.9 });
 const parkMat = new THREE.MeshStandardMaterial({ color: 0x8ccf76, roughness: 0.95 });
 const roofMat = new THREE.MeshStandardMaterial({ color: 0xb8bcc4, roughness: 0.7 });
@@ -876,8 +878,10 @@ function decorateStudio(b, w, h, d, item) {
   const name = (item.name || '').toUpperCase();
   // Barrel roof: a half cylinder along the long axis.
   const alongX = w >= d;
-  if (alongX) piece(cylGeo, hangarRoofMat, x - w / 2, top, z, d * 0.55, w, d).rotation.set(0, 0, -Math.PI / 2);
-  else piece(cylGeo, hangarRoofMat, x, top, z - d / 2, w, d, w * 0.55).rotation.set(Math.PI / 2, 0, 0);
+  // Slightly shorter and narrower than the stage so its end caps and flanks
+  // never share a surface with the walls (that z-fights and flickers).
+  if (alongX) piece(barrelGeo, hangarRoofMat, x - w / 2 + 0.2, top - 0.05, z, d * 0.55, w - 0.4, d * 0.94).rotation.set(0, 0, -Math.PI / 2);
+  else piece(barrelGeo, hangarRoofMat, x, top - 0.05, z - d / 2 + 0.2, w * 0.94, d - 0.4, w * 0.55).rotation.set(Math.PI / 2, 0, 0);
   // Big painted name and a stage number.
   textSign(name + ' STUDIOS', x, base + h * 0.72, front + 0.3, Math.min(w * 0.95, 14), Math.min(w * 0.95, 14) * 0.25, '#d94f4f', '#fff4d6', { border: '#fff4d6' });
   textSign('STAGE ' + (1 + (hashName(name) * 9) | 0), x, base + h * 0.35, front + 0.3, Math.min(w * 0.6, 7), Math.min(w * 0.6, 7) * 0.28, '#1d2230', '#ffffff');
@@ -3067,4 +3071,4 @@ if (DEMO) {
 }
 
 // Exposed for automated UI checks.
-window.__storageSaver = { state, openMenu, layout, toggleNight, buildSite, setScanProgress, pro };
+window.__storageSaver = { state, openMenu, layout, toggleNight, buildSite, setScanProgress, pro, camera, controls, blocks };
