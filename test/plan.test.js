@@ -142,3 +142,32 @@ test('app matching by name and bundle id', () => {
   assert.ok(belongsToApp('DaVinci Resolve', apps));
   assert.ok(!belongsToApp('Avid', apps));
 });
+
+test('owner key unlocks Pro offline; only its hash is configured', async () => {
+  const crypto = require('crypto');
+  const salt = 'testsalt';
+  const hash = crypto.scryptSync('GIGA-TEST-OWNR', salt, 32, { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }).toString('hex');
+  const dir = tmp();
+  const f = fakeFetch(() => new Error('should not call the network'));
+  const lic = createLicence({ dir, cfg: { ...cfg, ownerKey: { salt, hash } }, fetchImpl: f });
+  assert.equal((await lic.activate('wrong-key')).ok, false);
+  const r = await lic.activate(' giga-test-ownr ');
+  assert.ok(r.ok);
+  assert.equal(r.status.plan, 'pro');
+  assert.equal(r.status.keyHint, 'Owner key');
+  assert.ok(!f.calls.some((c) => c.endpoint === 'activate' && c.params.license_key.includes('TEST-OWNR')));
+  // Survives a restart, far beyond the offline grace period.
+  const later = createLicence({ dir, cfg: { ...cfg, ownerKey: { salt, hash } }, now: () => Date.now() + 400 * 86400000 });
+  assert.equal(later.status().plan, 'pro');
+  // A hand-edited plan file claiming owner without the right key stays free.
+  const p = path.join(dir, 'gigapolis-plan.json');
+  const d = JSON.parse(fs.readFileSync(p, 'utf8'));
+  d.licence.key = 'GIGA-FAKE';
+  fs.writeFileSync(p, JSON.stringify(d));
+  assert.equal(createLicence({ dir, cfg: { ...cfg, ownerKey: { salt, hash } } }).status().plan, 'free');
+});
+
+test('the real owner key is not in the repo', () => {
+  const real = require('../src/main/config').ownerKey;
+  assert.ok(real && /^[0-9a-f]{64}$/.test(real.hash));
+});

@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const config = require('./config');
 
 const API = 'https://api.lemonsqueezy.com/v1/licenses/';
@@ -22,10 +23,22 @@ function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now
     } catch {}
   }
 
+  // Owner key: only a salted scrypt hash of it lives in config, so it can't be
+  // read from the repo or the app bundle. Checked again on every launch, so a
+  // hand-edited plan file can't fake it.
+  function isOwnerKey(key) {
+    const o = cfg.ownerKey;
+    if (!o || !o.salt || !o.hash || !key) return false;
+    const want = Buffer.from(o.hash, 'hex');
+    const got = crypto.scryptSync(String(key).trim().toUpperCase(), o.salt, want.length, { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
+    return crypto.timingSafeEqual(got, want);
+  }
+  let ownerOk = !!(data.licence && data.licence.owner && isOwnerKey(data.licence.key));
+
   function isPro() {
-    if (forcePro) return true;
+    if (forcePro || ownerOk) return true;
     const l = data.licence;
-    if (!l || l.status === 'invalid') return false;
+    if (!l || l.owner || l.status === 'invalid') return false;
     return now() - (l.validatedAt || 0) < cfg.offlineGraceMs;
   }
 
@@ -38,7 +51,7 @@ function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now
       usedBytes: used,
       remainingBytes: pro ? null : Math.max(0, cfg.freeCapBytes - used),
       email: data.licence && data.licence.email,
-      keyHint: data.licence ? '…' + data.licence.key.slice(-6) : null,
+      keyHint: ownerOk ? 'Owner key' : data.licence ? '…' + data.licence.key.slice(-6) : null,
       weekly: { ...data.weekly },
       priceLabel: cfg.priceLabel,
       devPro: forcePro,
@@ -68,6 +81,12 @@ function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now
   async function activate(rawKey) {
     const key = String(rawKey || '').trim();
     if (!key) return { ok: false, error: 'Enter your licence key.' };
+    if (isOwnerKey(key)) {
+      data.licence = { key: key.toUpperCase(), owner: true, email: null, status: 'active', validatedAt: now() };
+      ownerOk = true;
+      save();
+      return { ok: true, status: status() };
+    }
     let r;
     try {
       r = await call('activate', { license_key: key, instance_name: `Gigapolis on ${os.hostname()}` });
@@ -90,7 +109,7 @@ function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now
   // only an explicit "not valid" from the server (refund, disabled key) does.
   async function revalidate(force = false) {
     const l = data.licence;
-    if (!l || l.status === 'invalid') return status();
+    if (!l || l.owner || l.status === 'invalid') return status();
     if (!force && now() - (l.validatedAt || 0) < cfg.revalidateMs) return status();
     try {
       const r = await call('validate', { license_key: l.key, instance_id: l.instanceId });
@@ -107,10 +126,11 @@ function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now
   async function deactivate() {
     const l = data.licence;
     if (!l) return { ok: true, status: status() };
-    try {
+    if (!l.owner) try {
       await call('deactivate', { license_key: l.key, instance_id: l.instanceId });
     } catch {}
     data.licence = null;
+    ownerOk = false;
     save();
     return { ok: true, status: status() };
   }
