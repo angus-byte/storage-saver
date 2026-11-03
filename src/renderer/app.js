@@ -16,7 +16,7 @@ const api = DEMO
         for (let i = 1; i <= 24; i++) {
           await new Promise((r) => setTimeout(r, 200));
           const done = i % 3 === 0 ? kids[i / 3 - 1] : null;
-          progressHandlers.forEach((cb) => cb({ files: i * 20400, bytes: i * 16e9, current: '/Users/angus/Movies/…', done }));
+          progressHandlers.forEach((cb) => cb({ files: i * 20400, bytes: i * 18.9e9, current: '/Users/angus/Movies/…', done }));
         }
         return { tree, suggestions: mockSuggestions(tree) };
       },
@@ -1861,13 +1861,17 @@ function siteBuilding(item) {
   }
 }
 
-function setScanProgress(p) {
+function setScanProgress(p, fraction = null) {
   if (!site) return;
   if (p.done) siteBuilding(p.done);
-  // Unknown total, so ease towards 1 as files and bytes pile up.
-  const byFiles = 1 - Math.exp(-(p.files || 0) / 220000);
-  const byBytes = 1 - Math.exp(-(p.bytes || 0) / 250e9);
-  site.progress = Math.max(site.progress, Math.min(0.97, Math.max(byFiles, byBytes)));
+  let f = fraction;
+  if (f === null) {
+    // Unknown total, so ease towards 1 as files and bytes pile up.
+    const byFiles = 1 - Math.exp(-(p.files || 0) / 220000);
+    const byBytes = 1 - Math.exp(-(p.bytes || 0) / 250e9);
+    f = Math.min(0.97, Math.max(byFiles, byBytes));
+  }
+  site.progress = Math.max(site.progress, f);
 }
 
 function drawLabel(item, sign, nightStyle) {
@@ -2352,13 +2356,21 @@ async function runScan(root) {
   $('progress').hidden = false;
   tooltip.hidden = true;
   buildSite();
+  // Expected total: when scanning the home folder, the space used on the disk
+  // is a good yardstick (system files make it land a little under 100%). For a
+  // chosen folder there is no yardstick, so the bar eases instead.
+  state.disk = await api.diskInfo();
+  renderDisk();
+  const usedOnDisk = !root && state.disk && state.disk.roots[0] && state.disk.roots[0].total ? state.disk.roots[0].total - state.disk.roots[0].free : 0;
+  $('progress-bar').classList.toggle('indeterminate', !usedOnDisk);
+  $('progress-bar').style.width = usedOnDisk ? '0%' : '';
   const off = api.onProgress((p) => {
-    $('progress-text').textContent = `Scanning… ${p.files.toLocaleString()} files · ${fmt(p.bytes)}`;
-    setScanProgress(p);
+    const pct = usedOnDisk ? Math.min(99, Math.round((p.bytes / usedOnDisk) * 100)) : null;
+    $('progress-text').textContent = `${pct === null ? 'Scanning…' : pct + '% scanned ·'} ${p.files.toLocaleString()} files · ${fmt(p.bytes)}`;
+    if (pct !== null) $('progress-bar').style.width = pct + '%';
+    setScanProgress(p, pct === null ? null : pct / 100);
   });
   try {
-    state.disk = await api.diskInfo();
-    renderDisk();
     const { tree, suggestions } = await api.scan(root || undefined);
     state.tree = tree;
     state.suggestions = suggestions;
