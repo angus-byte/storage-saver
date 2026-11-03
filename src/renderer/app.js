@@ -2,6 +2,7 @@ import * as THREE from './vendor/three.module.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { squarify } from './treemap.js';
 import { mockTree, mockSuggestions, mockDisk } from './mock.js';
+import { initPro, demoPlanApi, mockDeep } from './pro.js';
 
 // ---------------------------------------------------------------------------
 // Backend: Electron bridge or in-browser demo
@@ -27,10 +28,23 @@ const api = DEMO
       },
       reveal: async () => toast('Demo mode: would reveal in Finder / Explorer'),
       pickFolder: async () => null,
-      trash: async (paths) => paths.map((path) => ({ path, ok: true })),
-      emptyFolder: async (dir) => [{ path: dir, ok: true }],
+      ...demoPlanApi((p) => findSize(p)),
     }
   : window.storage;
+if (DEMO) api.deepScan = async () => mockDeep();
+// Size of a scanned path (demo mode uses it to apply the free allowance).
+function findSize(p) {
+  const lists = [...Object.values(state.suggestions || {}), ...Object.values(state.deep || {})];
+  for (const g of lists) for (const i of g.items) if (i.path === p) return i.size;
+  let hit = 0;
+  const walk = (n) => {
+    if (hit || !n) return;
+    if (n.path === p && !n.aggregate) hit = n.size;
+    (n.children || []).forEach(walk);
+  };
+  walk(state.tree);
+  return hit;
+}
 const progressHandlers = [];
 
 // ---------------------------------------------------------------------------
@@ -59,7 +73,8 @@ const MAX_H = 46;
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-const state = { disk: null, tree: null, suggestions: null, path: [], selected: new Map(), scanning: false };
+const state = { disk: null, tree: null, suggestions: null, deep: null, path: [], selected: new Map(), scanning: false };
+let pro = null; // free / Pro plan UI, see pro.js
 let night = false; // target state
 let nightK = 0; // 0 = full day, 1 = full night; eased towards the target each frame
 const clock = new THREE.Clock();
@@ -2054,6 +2069,7 @@ document.addEventListener('keydown', (e) => {
 async function demolish(item) {
   const mesh = meshes.find((m) => m.userData.item === item);
   const res = await api.trash([item.path]);
+  if (pro.handleBlocked(res)) return;
   if (!res.every((r) => r.ok)) {
     toast('Could not move to Trash: ' + (res.find((r) => !r.ok) || {}).error);
     return;
@@ -2088,7 +2104,7 @@ function removeFromTree(item) {
     anc.files -= item.files || 0;
   }
   if (state.suggestions) {
-    for (const g of Object.values(state.suggestions)) {
+    for (const g of [...Object.values(state.suggestions), ...Object.values(state.deep || {})]) {
       const before = g.items.length;
       g.items = g.items.filter((i) => i.path !== item.path && !i.path.startsWith(item.path + '/'));
       if (g.items.length !== before) g.total = g.items.reduce((s, i) => s + i.size, 0);
@@ -2235,6 +2251,39 @@ const GROUPS = [
   ['largeStale', 'Large files not opened in 6 months', 'Over 500 MB. Check before removing.', 'trash'],
 ];
 
+// One cleanup group (a <details> with a checkbox per item). Pro's Deep Clean
+// groups use it too; an item may carry its own mode (e.g. 'empty').
+function buildGroup(g, title, desc, mode, open) {
+  const det = document.createElement('details');
+  det.className = 'group';
+  det.open = open;
+  det.innerHTML = `<summary><span>${title}</span><span class="size">${fmt(g.total)}</span></summary><div class="hint">${desc}</div><ul></ul><span class="all">Select all</span>`;
+  const ul = det.querySelector('ul');
+  for (const it of g.items) {
+    const li = document.createElement('li');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.onchange = () => {
+      if (cb.checked) state.selected.set(it.path, { ...it, mode: mode === 'dup' ? 'dup' : it.mode || mode });
+      else state.selected.delete(it.path);
+      updateTrashButton();
+    };
+    li.appendChild(cb);
+    li.insertAdjacentHTML('beforeend', `<span class="name" title="${esc(it.note ? it.path + '\n' + it.note : it.path)}">${esc(it.name)}</span><span class="size">${fmt(it.size)}</span><span class="reveal" title="Show in Finder / Explorer">⌕</span>`);
+    li.querySelector('.reveal').onclick = () => api.reveal(it.path);
+    ul.appendChild(li);
+  }
+  det.querySelector('.all').onclick = () => {
+    ul.querySelectorAll('input').forEach((cb) => {
+      if (!cb.checked) {
+        cb.checked = true;
+        cb.onchange();
+      }
+    });
+  };
+  return det;
+}
+
 function renderClean() {
   const wrap = $('clean-groups');
   wrap.innerHTML = '';
@@ -2249,36 +2298,10 @@ function renderClean() {
     const g = state.suggestions[keyName];
     if (!g || !g.items.length) continue;
     grand += g.total;
-    const det = document.createElement('details');
-    det.className = 'group';
-    det.open = keyName === 'caches';
-    det.innerHTML = `<summary><span>${title}</span><span class="size">${fmt(g.total)}</span></summary><div class="hint">${desc}</div><ul></ul><span class="all">Select all</span>`;
-    const ul = det.querySelector('ul');
-    for (const it of g.items) {
-      const li = document.createElement('li');
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.onchange = () => {
-        if (cb.checked) state.selected.set(it.path, { ...it, mode });
-        else state.selected.delete(it.path);
-        updateTrashButton();
-      };
-      li.appendChild(cb);
-      li.insertAdjacentHTML('beforeend', `<span class="name" title="${esc(it.path)}">${esc(it.name)}</span><span class="size">${fmt(it.size)}</span><span class="reveal" title="Show in Finder / Explorer">⌕</span>`);
-      li.querySelector('.reveal').onclick = () => api.reveal(it.path);
-      ul.appendChild(li);
-    }
-    det.querySelector('.all').onclick = () => {
-      ul.querySelectorAll('input').forEach((cb) => {
-        if (!cb.checked) {
-          cb.checked = true;
-          cb.onchange();
-        }
-      });
-    };
-    wrap.appendChild(det);
+    wrap.appendChild(buildGroup(g, title, desc, mode, keyName === 'caches'));
   }
   $('clean-total').textContent = grand ? `· up to ${fmt(grand)}` : '';
+  if (pro) pro.renderDeep(wrap);
   updateTrashButton();
 }
 
@@ -2297,12 +2320,23 @@ $('btn-trash').onclick = async () => {
   btn.textContent = 'Moving to Trash…';
   let freed = 0;
   let failed = 0;
+  let capped = null;
   for (const it of items) {
-    const res = it.mode === 'empty' ? await api.emptyFolder(it.path) : await api.trash([it.path]);
+    const res = it.mode === 'dup' ? await api.trashDuplicate(it.path, it.keep) : it.mode === 'empty' ? await api.emptyFolder(it.path) : await api.trash([it.path]);
+    const cap = res.find((r) => r.error === 'cap');
+    if (cap) {
+      capped = capped || cap; // over the free allowance: skip it, smaller items may still fit
+      continue;
+    }
     if (res.every((r) => r.ok)) freed += it.size;
     else failed += 1;
   }
-  toast(`Moved ${fmt(freed)} to Trash${failed ? ` · ${failed} failed` : ''}. Empty the Trash to reclaim the space.`);
+  if (capped) pro.showUpgrade('cap', capped);
+  if (!freed && !failed) {
+    updateTrashButton();
+    return;
+  }
+  toast(`Moved ${fmt(freed)} to Trash${failed ? ` · ${failed} failed` : ''}${capped ? ' · free limit reached' : ''}. Empty the Trash to reclaim the space.`);
   await runScan(state.tree ? state.tree.path : null);
 };
 
@@ -2379,6 +2413,7 @@ async function runScan(root) {
     renderDisk();
     renderClean();
     layout();
+    pro.loadDeep();
   } catch (err) {
     if (!/aborted/.test(String(err))) toast('Scan failed: ' + (err.message || err));
     layout();
@@ -2421,6 +2456,7 @@ $('tabs').addEventListener('click', (e) => {
   for (const page of document.querySelectorAll('.tab-page')) page.hidden = page.id !== 'tab-' + tab.dataset.tab;
 });
 renderLegend();
+pro = initPro({ api, state, fmt, esc, toast, buildGroup, rerender: () => renderClean(), DEMO });
 api.diskInfo().then((d) => {
   state.disk = d;
   renderDisk();
@@ -2431,4 +2467,4 @@ if (DEMO) {
 }
 
 // Exposed for automated UI checks.
-window.__storageSaver = { state, openMenu, layout, toggleNight, buildSite, setScanProgress };
+window.__storageSaver = { state, openMenu, layout, toggleNight, buildSite, setScanProgress, pro };
