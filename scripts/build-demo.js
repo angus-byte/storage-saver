@@ -29,8 +29,8 @@ html = html
   .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\n/, '')
   .replace('<link rel="stylesheet" href="styles.css" />', `<style>\n${css}\n</style>`)
   .replace(
-    '<title>Storage Saver</title>',
-    `<title>Storage Saver</title>\n  <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@${THREE_VER}/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@${THREE_VER}/examples/jsm/" } }</script>`
+    /<title>[^<]*<\/title>/,
+    (t) => `${t}\n  <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@${THREE_VER}/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@${THREE_VER}/examples/jsm/" } }</script>`
   )
   .replace('<script type="module" src="app.js"></script>', `<script type="module">\n${treemap}\n${categoriesJs}\n${mock}\n${pro}\n${seasonsJs}\n${app}\n</script>`);
 
