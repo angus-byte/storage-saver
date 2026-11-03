@@ -11,6 +11,9 @@ module.exports = {
   storeId: Number(process.env.GIGAPOLIS_STORE_ID) || 513897,
   productId: Number(process.env.GIGAPOLIS_PRODUCT_ID) || 1496849,
   priceLabel: '$19.99',
+  // Angus's private owner key unlocks Pro without a purchase. Only its salted
+  // scrypt hash is stored here; the key itself is never committed.
+  ownerKey: { salt: '25d4942e3e4c3bac342b36907a1785e2', hash: '84afab7285f18fa29bcd00db81b7bf9a152dba54aa7d868ddfdd4325c2e0fc34' },
   // Free plan: total bytes that may be demolished (moved to Trash) over the
   // lifetime of the install. Emptying the Trash itself is never counted.
   freeCapBytes: 20 * GB,
