@@ -68,8 +68,8 @@ const BASE_W = 112;
 const BASE_D = 86;
 const STREET = 5; // gap between districts
 const SIDEWALK = 1.6; // pavement ring inside a district
-const LOT_GAP = 0.9; // gap between buildings in a district
-const MAX_H = 46;
+const LOT_GAP = 0.6; // gap between buildings in a district
+const MAX_H = 62;
 
 // ---------------------------------------------------------------------------
 // State
@@ -456,7 +456,7 @@ function clearBlocks() {
 
 let maxSizeInView = 1;
 function heightFor(size) {
-  return 2.5 + MAX_H * Math.sqrt(size / Math.max(maxSizeInView, 1));
+  return 4 + MAX_H * Math.sqrt(size / Math.max(maxSizeInView, 1));
 }
 // Lot (footprint) area grows slowly with size so big items become towers, not slabs.
 function lotFor(size) {
@@ -631,6 +631,7 @@ function placeSuburb(r) {
   for (const lr of lotRects) {
     const before = meshes.length;
     const h = placeBuilding(lr, 1, LOT_GAP);
+    lr.builtH = h;
     if (h > tallest) {
       tallest = h;
       tallestRect = lr;
@@ -642,7 +643,8 @@ function placeSuburb(r) {
   if (w * d > 90) addLabel({ name: SUBURB_NAMES[sub.kind] || sub.kind, size: sub.total }, x0 + w / 2, 1.2, z0 + d - 1, Math.min(w, 30), true);
   for (const lr of lotRects.slice(0, 3)) {
     if (lr.w * lr.h > 40) {
-      const bh = heightFor(lr.item.item.size);
+      // Use the height actually built (landmarks are capped), not the raw size.
+      const bh = lr.builtH || heightFor(lr.item.item.size);
       addLabel(lr.item.item, lr.x + lr.w / 2, 1.1 + bh + (bh > 30 ? bh * 0.55 : 2), lr.y + lr.h / 2, Math.min(lr.w + 6, 26));
     }
   }
@@ -652,13 +654,15 @@ function placeBuilding(r, depth, gap) {
   const item = r.item.item;
   // Footprint is capped by the item's own lot size, so towers stay slender
   // even when a suburb has room to spare.
-  const side = Math.sqrt(r.item.size) * 1.05;
-  const w = Math.max(0.3, Math.min(r.w - gap, side * (0.9 + Math.random() * 0.2)));
-  const d = Math.max(0.3, Math.min(r.h - gap, side * (0.9 + Math.random() * 0.2)));
+  // Buildings fill most of their lot so they read big; scale is deliberately
+  // generous next to streets, cars and people.
+  const side = Math.sqrt(r.item.size) * 1.5;
+  const w = Math.max(0.3, Math.min(r.w - gap, side * (0.95 + Math.random() * 0.1)));
+  const d = Math.max(0.3, Math.min(r.h - gap, side * (0.95 + Math.random() * 0.1)));
   if (w < 0.6 || d < 0.6) return 0;
   let h = heightFor(item.size);
   const landmark = landmarkFor(item);
-  if (landmark === 'library') h = Math.min(h, 9);
+  if (landmark === 'library') h = Math.min(h, 13);
   if (LANDMARK_MAX_H[landmark]) h = Math.min(h, LANDMARK_MAX_H[landmark]);
   const plain = { library: 0xe9e2d0, tip: 0x7a6a58, studio: 0xd8cfbe, market: 0xd8d2c6 };
   const mat = plain[landmark] ? new THREE.MeshStandardMaterial({ color: plain[landmark], roughness: 0.9 }) : facadeMaterial(item.kind, w, h, d, Math.floor(Math.random() * 4));
@@ -729,7 +733,7 @@ function landmarkFor(item) {
   if (n === 'desktop') return 'market';
   return null;
 }
-const LANDMARK_MAX_H = { tip: 3.5, market: 2.6, studio: 13, factory: 12 };
+const LANDMARK_MAX_H = { tip: 4.5, market: 3.4, studio: 18, factory: 17 };
 
 // Painted sign: text on a plane, facing +z. Added straight to the scene (no
 // build pop) so the texture never gets squashed.
@@ -775,7 +779,7 @@ const hangarRoofMat = new THREE.MeshStandardMaterial({ color: 0x8e8a84, roughnes
 const factoryMat = new THREE.MeshStandardMaterial({ color: 0x9a6a56, roughness: 0.9 });
 const stackMat = new THREE.MeshStandardMaterial({ color: 0x6b6f76, roughness: 0.8 });
 const gullMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
-const smokeMat = new THREE.SpriteMaterial({ map: glowTex, color: 0xd8dbe0, transparent: true, opacity: 0.35, depthWrite: false });
+const smokeMat = new THREE.SpriteMaterial({ map: glowTex, color: 0x8d939c, transparent: true, opacity: 0.85, depthWrite: false });
 const beamMat2 = new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
 const awningStripes = [0xd94f4f, 0x2b6cb0, 0xf6c90e, 0x35c77d, 0xf72585];
 const beamGeo = new THREE.CylinderGeometry(1.6, 0.25, 1, 12, 1, true);
@@ -939,13 +943,13 @@ function decorateFactory(b, w, h, d) {
     piece(cylGeo, stackMat, sx, top, sz, 1.1, sh, 1.1);
     piece(cylGeo, awningMat, sx, top + sh - 0.6, sz, 1.2, 0.6, 1.2, false);
     const puffs = [];
-    for (let k = 0; k < 7; k++) {
+    for (let k = 0; k < 14; k++) {
       const sp = new THREE.Sprite(smokeMat.clone());
       sp.position.set(sx, top + sh, sz);
       sp.scale.set(0.1, 0.1, 1);
       blocks.add(sp);
       extras.push(sp);
-      puffs.push({ sp, t: k / 7 });
+      puffs.push({ sp, t: k / 14 });
     }
     landmarkAnims.push({ kind: 'smoke', puffs, x: sx, y: top + sh, z: sz, speed: 0.22 + Math.random() * 0.1 });
   }
@@ -1056,9 +1060,9 @@ function stepLandmarks(dt, t) {
         if (p.t > 1) p.t -= 1;
         const k = p.t;
         p.sp.position.set(a.x + Math.sin(k * 6 + a.x) * 0.6 + k * 2.5, a.y + k * 9, a.z + Math.cos(k * 5) * 0.4);
-        const sc = 0.6 + k * 3.2;
+        const sc = 1.2 + k * 5;
         p.sp.scale.set(sc, sc, 1);
-        p.sp.material.opacity = 0.35 * (1 - k) * Math.min(1, k * 6);
+        p.sp.material.opacity = 0.85 * (1 - k * k) * Math.min(1, k * 8);
       }
     }
   }
