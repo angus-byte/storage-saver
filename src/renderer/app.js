@@ -101,7 +101,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.VSMShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
+renderer.toneMappingExposure = 0.98;
 container.appendChild(renderer.domElement);
 
 const SKY = 0x3cb6b4;
@@ -119,10 +119,10 @@ controls.minDistance = 50;
 controls.maxDistance = 520;
 controls.target.set(0, 14, 0);
 
-const hemi = new THREE.HemisphereLight(0xdff3ef, 0x6b6558, 1.0);
+const hemi = new THREE.HemisphereLight(0xdff3ef, 0x6b6558, 0.62);
 scene.add(hemi);
-const key = new THREE.DirectionalLight(0xffd9a8, 2.6); // warm late-afternoon sun
-key.position.set(120, 120, 90);
+const key = new THREE.DirectionalLight(0xffe6c4, 3.3); // hard, warm afternoon sun
+key.position.set(130, 95, 55); // lower sun: longer, crisper shadows
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
 key.shadow.camera.left = -140;
@@ -131,10 +131,10 @@ key.shadow.camera.top = 140;
 key.shadow.camera.bottom = -140;
 key.shadow.camera.far = 500;
 key.shadow.bias = -0.0002;
-key.shadow.radius = 6; // soft penumbra
+key.shadow.radius = 1.5; // crisp daytime shadows (softened at night in applyNight)
 key.shadow.blurSamples = 12;
 scene.add(key);
-const fill = new THREE.DirectionalLight(0x9fd8e8, 0.45);
+const fill = new THREE.DirectionalLight(0x9fd8e8, 0.25);
 fill.position.set(-120, 60, -90);
 scene.add(fill);
 
@@ -223,6 +223,36 @@ moon.position.set(-260, 170, -330);
 moon.visible = false;
 scene.add(moon);
 nightOnly.push(moon);
+// Reflections: a small sky (gradient dome + sun or moon) rendered into an
+// environment map, so glass, water, metal and cars mirror the sky. One map
+// for day and one for night; applyNight swaps and blends them.
+const pmrem = new THREE.PMREMGenerator(renderer);
+function skyEnv(top, horizon, ground, light, lightPos, lightPower) {
+  const env = new THREE.Scene();
+  const geo = new THREE.SphereGeometry(100, 32, 16);
+  const cols = [];
+  const cT = new THREE.Color(top), cH = new THREE.Color(horizon), cG = new THREE.Color(ground), c = new THREE.Color();
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i) / 100;
+    if (y >= 0) c.copy(cH).lerp(cT, Math.pow(y, 0.6));
+    else c.copy(cH).lerp(cG, Math.min(1, -y * 3));
+    cols.push(c.r, c.g, c.b);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  env.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+  const sun = new THREE.Mesh(new THREE.SphereGeometry(7, 16, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(light).multiplyScalar(lightPower) }));
+  sun.position.copy(lightPos).setLength(85);
+  env.add(sun);
+  const tex = pmrem.fromScene(env, 0.02).texture;
+  geo.dispose();
+  return tex;
+}
+const envDay = skyEnv(0x5cc4c2, 0xd9f4ee, 0x5a5a52, 0xfff0d6, new THREE.Vector3(130, 95, 55), 6);
+const envNight = skyEnv(0x0b1430, 0x22346e, 0x05070f, 0xcfd8ff, new THREE.Vector3(-260, 170, -330), 2.5);
+scene.environment = envDay;
+scene.environmentIntensity = 0.4;
+
 const moonGlow = glow(-260, 170, -330, 70, 0xcfd8ff, 0.5, 0.3);
 scene.add(moonGlow);
 nightOnly.push(moonGlow);
@@ -401,7 +431,7 @@ function trimMaterial(base) {
   c.setHSL(hsl.h, hsl.s * 0.8, Math.max(0.15, hsl.l * 0.72));
   return new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 });
 }
-const glassMat = new THREE.MeshStandardMaterial({ color: 0x9fd3e8, roughness: 0.2, metalness: 0.4 });
+const glassMat = new THREE.MeshStandardMaterial({ color: 0x9fd3e8, roughness: 0.08, metalness: 0.75 });
 const darkMat = new THREE.MeshStandardMaterial({ color: 0x2b3240, roughness: 0.8 });
 const awningMat = new THREE.MeshStandardMaterial({ color: 0xd94f4f, roughness: 0.9 });
 const tankMat = new THREE.MeshStandardMaterial({ color: 0x8a6a4e, roughness: 0.9 });
@@ -415,7 +445,7 @@ const vehicleMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 
 const personMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
 const skinMat = new THREE.MeshStandardMaterial({ color: 0xf0c9a6, roughness: 0.9 });
 const courtMat = new THREE.MeshStandardMaterial({ color: 0xd98a4b, roughness: 0.95 });
-const waterMat = new THREE.MeshStandardMaterial({ color: 0x5bc0e8, roughness: 0.15, metalness: 0.2 });
+const waterMat = new THREE.MeshStandardMaterial({ color: 0x4fb6e0, roughness: 0.05, metalness: 0.55 });
 const benchMat = new THREE.MeshStandardMaterial({ color: 0x8b5e3c, roughness: 0.9 });
 const stoneMat = new THREE.MeshStandardMaterial({ color: 0xcfcac0, roughness: 0.9 });
 const signalMat = new THREE.MeshStandardMaterial({ color: 0x23272e, roughness: 0.7 });
@@ -502,6 +532,11 @@ function layout() {
   placeTrees();
   renderCrumbs();
   renderFiles();
+  if (state.open) {
+    const fm = meshes.find((m) => !m.userData.district && m.userData.item.category === state.open);
+    focusMesh = fm || null;
+    focusTarget = fm ? 1 : 0;
+  }
   applyNight();
 }
 
@@ -519,15 +554,18 @@ function applyNight() {
   scene.fog.color.copy(lerpHex(_c1, 0x4fbdbb, 0x0c1430, k));
   hemi.color.copy(lerpHex(_c1, 0xdff3ef, 0x3a4a7a, k));
   hemi.groundColor.copy(lerpHex(_c1, 0x6b6558, 0x0c1020, k));
-  hemi.intensity = 1.0 + (0.35 - 1.0) * k;
-  fill.intensity = 0.45 + (0.15 - 0.45) * k;
-  renderer.toneMappingExposure = 1.1 + (0.95 - 1.1) * k;
+  hemi.intensity = 0.62 + (0.35 - 0.62) * k;
+  fill.intensity = 0.25 + (0.15 - 0.25) * k;
+  key.shadow.radius = 1.5 + 4.5 * k;
+  renderer.toneMappingExposure = 0.98 + (0.95 - 0.98) * k;
+  scene.environment = k < 0.5 ? envDay : envNight;
+  scene.environmentIntensity = k < 0.5 ? 0.4 * (1 - k * 1.4) : 0.3 * (k - 0.3);
   // Sun: warm and high → low orange at the horizon → cool moonlight from the other side.
   if (k < 0.5) {
     const u = k / 0.5;
-    key.color.copy(lerpHex(_c1, 0xffd9a8, 0xff7a3d, u));
-    key.intensity = 2.6 + (1.1 - 2.6) * u;
-    key.position.set(120 + (170 - 120) * u, 120 + (14 - 120) * u, 90 + (-40 - 90) * u);
+    key.color.copy(lerpHex(_c1, 0xffe6c4, 0xff7a3d, u));
+    key.intensity = 3.3 + (1.1 - 3.3) * u;
+    key.position.set(130 + (170 - 130) * u, 95 + (14 - 95) * u, 55 + (-40 - 55) * u);
   } else {
     const u = (k - 0.5) / 0.5;
     key.color.copy(lerpHex(_c1, 0xff7a3d, 0x9fb4ff, u));
@@ -561,7 +599,73 @@ function applyNight() {
   }
   clouds.children.forEach((c) => c.children.forEach((s) => (s.material.opacity = 0.5 + (0.22 - 0.5) * k)));
   if (seasons) seasons.tintLights({ fog: scene.fog, hemi, key, nightK: k });
+  applyFocusDim();
 }
+// Spotlight: selecting a building drops a ray of light onto it while the
+// rest of the city (lights, reflections, sky) dims. focusK eases 0 -> 1.
+let focusMesh = null;
+let focusK = 0;
+let focusTarget = 0;
+let beamT = 0;
+const focusSpot = new THREE.SpotLight(0xfff4d6, 0, 0, Math.PI / 14, 0.55, 0);
+focusSpot.visible = false;
+scene.add(focusSpot, focusSpot.target);
+const rayGeo = new THREE.CylinderGeometry(0.18, 1, 1, 40, 1, true).translate(0, -0.5, 0); // hangs down from y=0
+const rayMat = new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+const ray = new THREE.Mesh(rayGeo, rayMat);
+ray.visible = false;
+ray.renderOrder = 5;
+scene.add(ray);
+const RAY_TOP = 190;
+const _focusAim = new THREE.Vector3();
+const _focusSrc = new THREE.Vector3();
+const _focusDir = new THREE.Vector3();
+const _down = new THREE.Vector3(0, -1, 0);
+function setFocus(mesh) {
+  if (mesh && mesh !== focusMesh) beamT = 0;
+  focusMesh = mesh || focusMesh;
+  focusTarget = mesh ? 1 : 0;
+}
+function applyFocusDim() {
+  const d = 1 - 0.68 * focusK;
+  hemi.intensity *= d;
+  fill.intensity *= d;
+  key.intensity *= 1 - 0.75 * focusK;
+  scene.environmentIntensity *= d;
+  document.documentElement.style.setProperty('--focus', (focusK * 0.55).toFixed(3));
+}
+function stepFocus(dt) {
+  const prev = focusK;
+  focusK += (focusTarget - focusK) * Math.min(1, dt * (focusTarget ? 3.2 : 4.5));
+  if (Math.abs(focusK - focusTarget) < 0.002) focusK = focusTarget;
+  if (focusK !== prev) applyNight();
+  const m = focusMesh;
+  const on = focusK > 0.001 && m && m.parent;
+  ray.visible = focusSpot.visible = !!on;
+  if (!on) {
+    if (!focusTarget) focusMesh = null;
+    return;
+  }
+  beamT = Math.min(1, beamT + dt * 1.6);
+  const fp = m.userData.footprint || { x: m.position.x, z: m.position.z, w: m.scale.x, d: m.scale.z };
+  const topY = 1.1 + m.scale.y;
+  const drop = 1 - Math.pow(1 - beamT, 3); // ray shoots down from the sky, easing in
+  // The ray comes from high up on the camera's side so it lights the facade, not just the roof.
+  const aim = _focusAim.set(fp.x, topY * 0.45, fp.z);
+  const src = _focusSrc.set(camera.position.x - controls.target.x, 0, camera.position.z - controls.target.z).setLength(RAY_TOP * 0.45).add(aim);
+  src.y = RAY_TOP;
+  const dist = src.distanceTo(aim) + topY * 0.6;
+  const r = Math.max(fp.w, fp.d) * 0.8 + 2;
+  ray.position.copy(src);
+  ray.quaternion.setFromUnitVectors(_down, _focusDir.subVectors(aim, src).normalize());
+  ray.scale.set(r, Math.max(0.01, dist * drop), r);
+  rayMat.opacity = 0.16 * focusK * (0.85 + 0.15 * Math.sin(clock.elapsedTime * 2.2));
+  focusSpot.position.copy(src);
+  focusSpot.target.position.copy(aim);
+  focusSpot.angle = Math.min(0.6, Math.atan2(Math.max(r, topY * 0.6), dist));
+  focusSpot.intensity = 6 * focusK * (beamT > 0.8 ? 1 : beamT / 0.8);
+}
+
 function toggleNight() {
   night = !night;
   $('btn-night').textContent = night ? '☀ Day' : '☾ Night';
@@ -1171,8 +1275,9 @@ function applyStyleTint(mat, style) {
   if (tint === undefined) return;
   mat.color.lerp(new THREE.Color(tint), 0.55);
   if (style === 'glass' || style === 'twin') {
-    mat.metalness = 0.45;
-    mat.roughness = 0.3;
+    // Curtain-wall glass: shiny enough to mirror the sky and sun (see skyEnv).
+    mat.metalness = 0.7;
+    mat.roughness = 0.12;
   }
 }
 const terracottaRoof = new THREE.MeshStandardMaterial({ color: 0xb8432f, roughness: 0.85 });
@@ -2550,6 +2655,7 @@ renderer.domElement.addEventListener('click', (e) => {
   const it = hovered && !hovered.userData.district ? hovered.userData.item : null;
   if (it && it.category) openCategory(it.category);
   else if (it && it.virtual) toast(`${it.name}: ${fmt(it.size)}`);
+  else if (state.open) openCategory(null);
 });
 
 function updateHover() {
@@ -2649,6 +2755,7 @@ function animate() {
   updateLife(dt, t);
   if (site) updateSite(dt, t);
   stepNight(dt);
+  stepFocus(dt);
   if (seasons) seasons.step(dt, t);
   if (nightK >= 1) stars.material.opacity = 0.78 + 0.2 * Math.sin(t * 2.3);
   for (const c of clouds.children) {
@@ -2740,6 +2847,7 @@ function renderCrumbs() {
 const hexColor = (k) => '#' + (KIND_COLORS[k] || KIND_COLORS.other).toString(16).padStart(6, '0');
 function openCategory(id) {
   state.open = id;
+  setFocus(id ? meshes.find((m) => !m.userData.district && m.userData.item.category === id) : null);
   renderFiles();
   if (!id) return;
   setPanel(true);
@@ -2777,29 +2885,40 @@ function fileList(items, top) {
     const canOpen = it.isDir && (it.children || []).length > 0;
     const canDemolish = it.path && !it.aggregate && !it.virtual;
     const sub = top && it.rel && it.rel !== it.name ? `<small>${esc(it.rel.slice(0, -it.name.length - 1))}</small>` : '';
-    li.innerHTML = `<div class="row"><span class="chev">${canOpen ? '›' : ''}</span><span class="icon">${it.isDir ? '📁' : it.aggregate ? '🗂' : '📄'}</span><span class="name" title="${esc(it.path || '')}">${esc(it.name)}${sub}</span><span class="size">${fmt(it.size)}</span>` +
-      (it.path && !it.virtual ? `<button class="mini" data-act="reveal" title="Show in Finder">📍</button>` : '') +
-      (canDemolish ? `<button class="mini" data-act="demolish" title="Demolish (move to Trash)">🧨</button>` : '') +
-      `</div>`;
+    li.innerHTML = `<div class="row"><span class="chev">${canOpen ? '›' : ''}</span><span class="icon">${it.isDir ? '📁' : it.aggregate ? '🗂' : '📄'}</span><span class="name" title="${esc(it.path || '')}">${esc(it.name)}${sub}</span><span class="size">${fmt(it.size)}</span></div>`;
     const row = li.firstChild;
-    row.onclick = async (e) => {
+    // Clicking a row picks it and shows its actions underneath (folders also open).
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+    const showActions = () => {
+      actions.innerHTML =
+        (it.path && !it.virtual ? `<button data-act="reveal">📍 Show in Finder</button>` : '') +
+        (canDemolish ? `<button data-act="demolish" class="demolish">🧨 Demolish</button>` : `<span class="muted">${it.aggregate ? 'Lots of small files: open the folder in Finder to pick.' : ''}</span>`);
+    };
+    actions.onclick = async (e) => {
       const act = e.target.closest('[data-act]');
-      if (act && act.dataset.act === 'reveal') return api.reveal(it.path);
-      if (act && act.dataset.act === 'demolish') {
-        if (!act.classList.contains('armed')) {
-          act.classList.add('armed');
-          act.textContent = 'Demolish?';
-          setTimeout(() => {
-            act.classList.remove('armed');
-            act.textContent = '🧨';
-          }, 3000);
-          return;
-        }
-        return demolish(it);
+      if (!act) return;
+      if (act.dataset.act === 'reveal') api.reveal(it.path);
+      else if (act.dataset.act === 'demolish') actions.innerHTML = `<button data-act="confirm" class="demolish">Yes, demolish ${fmt(it.size)}</button><button data-act="keep">Keep it</button>`;
+      else if (act.dataset.act === 'keep') showActions();
+      else if (act.dataset.act === 'confirm') await demolish(it);
+    };
+    row.onclick = () => {
+      const picked = !li.classList.contains('picked');
+      for (const o of document.querySelectorAll('#files li.picked')) {
+        if (o === li) continue;
+        o.classList.remove('picked');
+        const bar = o.querySelector(':scope > .row-actions');
+        if (bar) bar.remove();
       }
+      li.classList.toggle('picked', picked);
+      if (picked) {
+        showActions();
+        row.after(actions);
+      } else actions.remove();
       if (!canOpen) return;
-      li.classList.toggle('open');
-      if (li.classList.contains('open') && !li.querySelector('ul')) li.appendChild(fileList(it.children, false));
+      li.classList.toggle('open', picked);
+      if (picked && !li.querySelector('ul')) li.appendChild(fileList(it.children, false));
     };
     ul.appendChild(li);
   }
@@ -2812,9 +2931,12 @@ function fileList(items, top) {
   return ul;
 }
 
+// Safe Clean tab: one button, only things that are always safe to clear.
+const SAFE_GROUPS = [
+  ['caches', '🧹 Caches & temp files', 'Apps rebuild them when needed.'],
+  ['trash', '🗑 Trash / Recycle Bin', 'Things you already deleted, not yet emptied.'],
+];
 const GROUPS = [
-  ['caches', 'Caches & temp files', 'Safe to clear; apps rebuild them.', 'empty'],
-  ['trash', 'Trash / Recycle Bin', 'Already deleted by you; just not emptied.', 'empty'],
   ['oldDownloads', 'Old downloads & installers', 'Untouched for 60+ days.', 'trash'],
   ['largeStale', 'Large files not opened in 6 months', 'Over 500 MB. Check before removing.', 'trash'],
 ];
@@ -2852,7 +2974,29 @@ function buildGroup(g, title, desc, mode, open) {
   return det;
 }
 
+function renderSafe() {
+  const list = $('safe-list');
+  const btn = $('btn-safe');
+  if (!list) return;
+  const groups = state.suggestions ? SAFE_GROUPS.map(([k, t, d]) => [state.suggestions[k], t, d]).filter(([g]) => g && g.items.length) : [];
+  const total = groups.reduce((n, [g]) => n + g.total, 0);
+  $('safe-total').textContent = state.suggestions ? fmt(total) : '—';
+  $('safe-sub').textContent = !state.suggestions ? 'Scan your files to see what can go.' : total ? 'can be cleared safely right now' : 'Nothing to clear. Your city is spotless.';
+  list.innerHTML = groups.map(([g, t, d]) => `<li><span class="name"><b>${t}</b><small>${d}</small></span><span class="size">${fmt(g.total)}</span></li>`).join('');
+  btn.disabled = !total;
+  btn.textContent = total ? `Safe clean · free ${fmt(total)}` : 'Safe clean';
+}
+$('btn-safe').onclick = async () => {
+  if (!state.suggestions) return;
+  const items = SAFE_GROUPS.flatMap(([k]) => (state.suggestions[k] ? state.suggestions[k].items : [])).map((it) => ({ ...it, mode: 'empty' }));
+  if (!items.length) return;
+  $('btn-safe').disabled = true;
+  $('btn-safe').textContent = 'Cleaning…';
+  await moveToTrash(items);
+};
+
 function renderClean() {
+  renderSafe();
   const wrap = $('clean-groups');
   wrap.innerHTML = '';
   state.selected.clear();
@@ -2886,6 +3030,9 @@ $('btn-trash').onclick = async () => {
   const btn = $('btn-trash');
   btn.disabled = true;
   btn.textContent = 'Moving to Trash…';
+  await moveToTrash(items);
+};
+async function moveToTrash(items) {
   let freed = 0;
   let failed = 0;
   let capped = null;
@@ -2902,11 +3049,12 @@ $('btn-trash').onclick = async () => {
   if (capped) pro.showUpgrade('cap', capped);
   if (!freed && !failed) {
     updateTrashButton();
+    renderSafe();
     return;
   }
   toast(`Moved ${fmt(freed)} to Trash${failed ? ` · ${failed} failed` : ''}${capped ? ' · free limit reached' : ''}. Empty the Trash to reclaim the space.`);
   await runScan(state.tree ? state.tree.path : null);
-};
+}
 
 // ---------------------------------------------------------------------------
 // Scanning

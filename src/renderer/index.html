@@ -10,6 +10,7 @@
 <body>
   <div id="sky-day"></div>
   <div id="sky-night"></div>
+  <div id="sky-dim"></div>
   <div id="scene"></div>
 
   <aside id="panel" class="collapsed">
@@ -53,11 +54,22 @@
 
     <div id="panel-body">
       <nav class="tabs" id="tabs">
-        <button class="tab active" data-tab="clean">Clean up</button>
+        <button class="tab active safe-tab" data-tab="safe">Safe Clean</button>
+        <button class="tab" data-tab="clean">Clean up</button>
         <button class="tab" data-tab="files">Files</button>
       </nav>
 
-      <section id="tab-clean" class="tab-page">
+      <section id="tab-safe" class="tab-page">
+        <div class="safe-hero">
+          <div class="safe-big" id="safe-total">—</div>
+          <div class="safe-sub" id="safe-sub">Scan your files to see what can go.</div>
+        </div>
+        <ul id="safe-list"></ul>
+        <button id="btn-safe" class="primary safe-btn" disabled>Safe clean</button>
+        <p class="hint">Only caches and the Trash: nothing you would miss. Everything goes to the Trash first, so you can get it back.</p>
+      </section>
+
+      <section id="tab-clean" class="tab-page" hidden>
         <div class="section-head"><span>Safe to clear</span><span id="clean-total" class="muted"></span></div>
         <div id="clean-groups"></div>
         <button id="btn-trash" class="danger" disabled>Move selected to Trash</button>
