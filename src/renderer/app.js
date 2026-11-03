@@ -1151,13 +1151,23 @@ function buildStreets(rects) {
   for (const [at, ranges] of vertical) for (const [from, to] of ranges) streets.push({ axis: 'z', at, from: Math.max(from, -BASE_D / 2 - 2), to: Math.min(to, BASE_D / 2 + 2) });
   for (const [at, ranges] of horizontal) for (const [from, to] of ranges) streets.push({ axis: 'x', at, from: Math.max(from, -BASE_W / 2 - 2), to: Math.min(to, BASE_W / 2 + 2) });
 
-  // Crosswalks near both ends of every internal street, and in the middle of long ones.
+  // Crosswalks near both ends of every internal street, and in the middle of
+  // long ones. Skip any that would land inside a crossing street or on top of
+  // another crosswalk, so junctions don't get a pile of stripes.
+  const placed = [];
   for (const st of streets) {
     const len = st.to - st.from;
-    const spots = [st.from + 3.2, st.to - 3.2];
-    if (len > 40) spots.push((st.from + st.to) / 2);
-    st.stops = spots;
-    for (const sp of spots) {
+    const candidates = [st.from + 3.4, st.to - 3.4];
+    if (len > 40) candidates.push((st.from + st.to) / 2);
+    st.stops = [];
+    for (const sp of candidates) {
+      const px = st.axis === 'z' ? st.at : sp;
+      const pz = st.axis === 'z' ? sp : st.at;
+      const inJunction = streets.some((o) => o.axis !== st.axis && Math.abs(sp - o.at) < STREET / 2 + 1.6 && st.at > o.from - 0.1 && st.at < o.to + 0.1);
+      const tooClose = placed.some(([qx, qz]) => Math.hypot(qx - px, qz - pz) < 5);
+      if (inJunction || tooClose) continue;
+      placed.push([px, pz]);
+      st.stops.push(sp);
       crosswalk(st, sp);
       roadSign(st, sp);
     }
@@ -1251,8 +1261,8 @@ function roadSign(st, pos) {
 function crosswalk(st, pos) {
   for (let k = -2; k <= 2; k++) {
     const off = k * 0.95;
-    if (st.axis === 'z') piece(boxGeo, laneMat, st.at + off, 0.62, pos, 0.5, 0.03, 2.2, false);
-    else piece(boxGeo, laneMat, pos, 0.62, st.at + off, 2.2, 0.03, 0.5, false);
+    if (st.axis === 'z') piece(boxGeo, laneMat, st.at + off, 0.64, pos, 0.5, 0.03, 2.2, false);
+    else piece(boxGeo, laneMat, pos, 0.64, st.at + off, 2.2, 0.03, 0.5, false);
   }
 }
 
@@ -1260,6 +1270,7 @@ function parkedCars(st) {
   const len = st.to - st.from;
   for (let p = st.from + 6; p < st.to - 6; p += 7 + Math.random() * 6) {
     if (Math.random() < 0.4) continue;
+    if ((st.stops || []).some((sp) => Math.abs(sp - p) < 3)) continue;
     const side = Math.random() < 0.5 ? 1 : -1;
     const col = new THREE.Color().setHSL(Math.random(), 0.5, 0.5);
     const mat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.5, metalness: 0.3 });
