@@ -223,13 +223,36 @@ nightOnly.push(moonGlow);
 // The plinth: a chunky grey base; its top is the asphalt the districts sit on.
 const city = new THREE.Group();
 scene.add(city);
-const plinth = new THREE.Mesh(
-  new THREE.BoxGeometry(BASE_W + 10, 10, BASE_D + 10),
-  new THREE.MeshStandardMaterial({ color: 0xc9ced4, metalness: 0.05, roughness: 0.85 })
-);
-plinth.position.y = -5;
+// Dark charcoal slab with a chamfered edge; the pale kerb sits on its rim.
+const plinthShape = new THREE.Shape();
+{
+  const hw = BASE_W / 2 + 4.2;
+  const hd = BASE_D / 2 + 4.2;
+  const r = 1.2;
+  plinthShape.moveTo(-hw + r, -hd);
+  plinthShape.lineTo(hw - r, -hd);
+  plinthShape.quadraticCurveTo(hw, -hd, hw, -hd + r);
+  plinthShape.lineTo(hw, hd - r);
+  plinthShape.quadraticCurveTo(hw, hd, hw - r, hd);
+  plinthShape.lineTo(-hw + r, hd);
+  plinthShape.quadraticCurveTo(-hw, hd, -hw, hd - r);
+  plinthShape.lineTo(-hw, -hd + r);
+  plinthShape.quadraticCurveTo(-hw, -hd, -hw + r, -hd);
+}
+const plinthGeo = new THREE.ExtrudeGeometry(plinthShape, { depth: 5.5, bevelEnabled: true, bevelThickness: 1.6, bevelSize: 1.6, bevelSegments: 3, curveSegments: 6 });
+plinthGeo.rotateX(Math.PI / 2);
+plinthGeo.translate(0, -1.6, 0); // bevel top sits at y = 0, under the kerb and asphalt
+const plinth = new THREE.Mesh(plinthGeo, new THREE.MeshStandardMaterial({ color: 0x2c3038, metalness: 0.15, roughness: 0.55 }));
 plinth.receiveShadow = true;
+plinth.castShadow = true;
 city.add(plinth);
+// Soft shadow pad under the slab so it reads as sitting on the ground.
+const padMat = new THREE.MeshBasicMaterial({ color: 0x0a2a2e, transparent: true, opacity: 0.07, depthWrite: false });
+const pad = new THREE.Mesh(new THREE.CircleGeometry(1, 48), padMat);
+pad.rotation.x = -Math.PI / 2;
+pad.scale.set(BASE_W * 0.62, BASE_D * 0.66, 1);
+pad.position.y = -7.2;
+city.add(pad);
 const asphalt = new THREE.Mesh(
   new THREE.BoxGeometry(BASE_W + 4, 0.6, BASE_D + 4),
   new THREE.MeshStandardMaterial({ color: 0x4a4f5a, roughness: 0.95 })
@@ -238,8 +261,8 @@ asphalt.position.y = 0.3;
 asphalt.receiveShadow = true;
 city.add(asphalt);
 const kerb = new THREE.Mesh(
-  new THREE.BoxGeometry(BASE_W + 10, 0.5, BASE_D + 10),
-  new THREE.MeshStandardMaterial({ color: 0xe4e7eb, roughness: 0.9 })
+  new THREE.BoxGeometry(BASE_W + 8.4, 0.5, BASE_D + 8.4),
+  new THREE.MeshStandardMaterial({ color: 0xe9ebee, roughness: 0.9 })
 );
 kerb.position.y = 0.2;
 kerb.receiveShadow = true;
@@ -638,20 +661,25 @@ function placeBuilding(r, depth, gap) {
   const landmark = landmarkFor(item);
   if (landmark === 'library') h = Math.min(h, 9);
   const mat = landmark ? new THREE.MeshStandardMaterial({ color: 0xe9e2d0, roughness: 0.85 }) : facadeMaterial(item.kind, w, h, d, Math.floor(Math.random() * 4));
+  const style = landmark ? null : styleFor(item, h, Math.min(w, d));
+  if (style) applyStyleTint(mat, style);
   const b = new THREE.Mesh(boxGeo, mat);
   b.position.set(r.x + r.w / 2, 1.1, r.y + r.h / 2);
   b.scale.set(w, 0.001, d);
+  // Stepped styles keep the main shaft short and stack tiers above it.
+  const shaft = style ? h * STYLE_SHAFT[style] : h;
   // Build-up animation: a wave sweeps across the city; each building grows
   // from the ground with a playful overshoot, and its details pop on as the
   // shaft reaches them (roofs last).
   const delay = ((b.position.x + b.position.z + BASE_W / 2 + BASE_D / 2) / (BASE_W + BASE_D)) * 0.7 + Math.random() * 0.25;
-  b.userData = { item, targetH: h, depth, build: { t: -delay, dur: 0.7 + Math.min(0.6, h / 60) }, pieces: [] };
+  b.userData = { item, targetH: shaft, depth, style, build: { t: -delay, dur: 0.7 + Math.min(0.6, h / 60) }, pieces: [] };
   b.castShadow = true;
   b.receiveShadow = true;
   blocks.add(b);
   meshes.push(b);
   activeBuilding = b;
   if (landmark === 'library') decorateLibrary(b, w, h, d, heightFor(item.size));
+  else if (style && style !== 'default') decorateStyled(b, w, h, d, style);
   else decorate(b, w, h, d);
   activeBuilding = null;
   b.userData.footprint = { x: b.position.x, z: b.position.z, w, d };
@@ -728,6 +756,170 @@ function decorateLibrary(b, w, h, d, fullH) {
   piece(coneGeo, spireMat, x, top + 2.2 + domeH * 0.5, z - d * 0.1, r * 0.3, 1.2, r * 0.3, false);
   // "LIBRARY" lettering along the entablature as a dark strip.
   piece(boxGeo, signalMat, x, top + 0.15, front + 0.95, w * 0.5, 0.3, 0.03, false);
+}
+
+
+// ---------------------------------------------------------------------------
+// Building styles: each item gets a distinct silhouette, chosen from its name
+// so it stays the same between scans. Shaft = how much of the height the
+// plain box takes; the rest is tiers, crowns and spires.
+// ---------------------------------------------------------------------------
+const STYLE_SHAFT = { default: 1, deco: 0.62, chrysler: 0.7, stepped: 0.5, glass: 1, twin: 1, brick: 1, modern: 1, civic: 1, shop: 1 };
+const STYLE_TINT = { deco: 0xf0e3c6, chrysler: 0xd9d6cc, stepped: 0xd2743f, glass: 0x4f7a9a, twin: 0x8fb0c8, brick: 0xb0553c, modern: 0xf3efe6, civic: 0xe8dcc0, shop: 0xe39a5a };
+function hashName(name) {
+  let h = 2166136261;
+  for (let i = 0; i < name.length; i++) h = Math.imul(h ^ name.charCodeAt(i), 16777619);
+  return (h >>> 0) / 4294967295;
+}
+function styleFor(item, h, minSide) {
+  const v = hashName(item.name || '');
+  const pick = (list) => list[Math.floor(v * list.length) % list.length];
+  if (h > 30 && minSide > 3) return pick(['deco', 'chrysler', 'glass', 'twin', 'stepped', 'default', 'deco']);
+  if (h > 12 && minSide > 2.2) return pick(['brick', 'stepped', 'modern', 'glass', 'default', 'brick']);
+  if (minSide > 3 && h <= 9) return pick(['civic', 'shop', 'default', 'shop']);
+  return pick(['shop', 'default', 'modern']);
+}
+function applyStyleTint(mat, style) {
+  const tint = STYLE_TINT[style];
+  if (tint === undefined) return;
+  mat.color.lerp(new THREE.Color(tint), 0.55);
+  if (style === 'glass' || style === 'twin') {
+    mat.metalness = 0.45;
+    mat.roughness = 0.3;
+  }
+}
+const terracottaRoof = new THREE.MeshStandardMaterial({ color: 0xb8432f, roughness: 0.85 });
+const limestoneMat = new THREE.MeshStandardMaterial({ color: 0xe8dfc8, roughness: 0.85 });
+const copperMat = new THREE.MeshStandardMaterial({ color: 0x5f9c8a, roughness: 0.5, metalness: 0.3 });
+
+function decorateStyled(b, w, h, d, style) {
+  const x = b.position.x;
+  const z = b.position.z;
+  const base = 1.1;
+  const shaft = h * STYLE_SHAFT[style];
+  const top = base + shaft;
+  const minSide = Math.min(w, d);
+  const trim = trimMaterial(b.material);
+  const front = z + d / 2;
+  const fm = b.material;
+  // Entrance on everything tall enough.
+  if (minSide > 1.4 && h > 5 && w > 2) {
+    piece(boxGeo, trim, x, base, z, w + 0.16, Math.min(1.4, h * 0.1), d + 0.16);
+    const doorW = Math.min(1.1, w * 0.3);
+    piece(boxGeo, darkMat, x, base + 0.02, front + 0.18, doorW, 1.1, 0.12, false);
+  }
+  if (style === 'deco') {
+    // Empire State: pilasters, three setbacks, lantern and a tall mast.
+    const n = Math.max(2, Math.floor(w / 1.3));
+    for (let i = 0; i < n; i++) {
+      const px = x - w / 2 + 0.65 + (i * (w - 1.3)) / Math.max(1, n - 1);
+      piece(boxGeo, limestoneMat, px, base, front + 0.06, 0.22, shaft, 0.1, false);
+    }
+    let y = top;
+    let cw = w;
+    let cd = d;
+    for (const [f, hh] of [[0.78, 0.16], [0.58, 0.12], [0.4, 0.07]]) {
+      piece(boxGeo, trim, x, y - 0.12, z, cw + 0.2, 0.25, cd + 0.2);
+      cw = w * f;
+      cd = d * f;
+      piece(boxGeo, fm, x, y, z, cw, h * hh, cd);
+      y += h * hh;
+    }
+    piece(cylGeo, limestoneMat, x, y, z, Math.min(1.6, minSide * 0.25), h * 0.05, Math.min(1.6, minSide * 0.25));
+    y += h * 0.05;
+    piece(cylGeo, spireMat, x, y, z, 0.3, h * 0.12, 0.3, false);
+    piece(cylGeo, spireMat, x, y + h * 0.12, z, 0.1, h * 0.08, 0.1, false);
+  } else if (style === 'chrysler') {
+    // Tapering crown of stacked arcs and a needle.
+    piece(boxGeo, trim, x, top - 0.12, z, w + 0.2, 0.25, d + 0.2);
+    let y = top;
+    let r = minSide * 0.95;
+    for (let i = 0; i < 6; i++) {
+      piece(cylGeo, spireMat, x, y, z, r, h * 0.045, r);
+      piece(cylGeo, copperMat, x, y + h * 0.045, z, r * 0.92, h * 0.012, r * 0.92, false);
+      y += h * 0.057;
+      r *= 0.78;
+    }
+    piece(coneGeo, spireMat, x, y, z, r, h * 0.08, r);
+    piece(cylGeo, spireMat, x, y + h * 0.08, z, 0.08, h * 0.06, 0.08, false);
+    // Winged ornaments at the corners.
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) piece(boxGeo, spireMat, x + (sx * w) / 2, top - 0.5, z + (sz * d) / 2, 0.5, 1.3, 0.5, false);
+  } else if (style === 'stepped') {
+    // Ziggurat of terracotta tiers.
+    let y = top;
+    let f = 0.8;
+    for (let i = 0; i < 3; i++) {
+      piece(boxGeo, trim, x, y - 0.1, z, w * (f + 0.22) + 0.1, 0.22, d * (f + 0.22) + 0.1);
+      piece(boxGeo, fm, x, y, z, w * f, h * 0.16, d * f);
+      y += h * 0.16;
+      f -= 0.2;
+    }
+    piece(boxGeo, trim, x, y - 0.1, z, w * 0.42, 0.22, d * 0.42);
+    piece(boxGeo, limestoneMat, x, y, z, w * 0.18, 1.2, d * 0.18, false);
+    piece(cylGeo, spireMat, x, y + 1.2, z, 0.08, 2.5, 0.08, false);
+  } else if (style === 'glass') {
+    // Dark-glass slab with a pale service core and a helipad.
+    piece(boxGeo, limestoneMat, x - w * 0.28, base, z - d * 0.28, w * 0.36, h * 1.06, d * 0.36);
+    piece(boxGeo, trim, x, top - 0.1, z, w + 0.12, 0.14, d + 0.12);
+    piece(discGeo, darkMat, x + w * 0.12, top, z + d * 0.12, Math.min(w, d) * 0.5, 0.12, Math.min(w, d) * 0.5, false);
+    piece(discGeo, whiteMat, x + w * 0.12, top + 0.12, z + d * 0.12, Math.min(w, d) * 0.3, 0.04, Math.min(w, d) * 0.3, false);
+    for (let yy = base + 3; yy < top - 1; yy += 3.2) piece(boxGeo, spireMat, x, yy, front + 0.04, w, 0.08, 0.06, false);
+  } else if (style === 'twin') {
+    // Two slender shafts joined by a sky bridge.
+    b.scale.x = w * 0.44;
+    b.position.x = x - w * 0.28;
+    piece(boxGeo, fm, x + w * 0.28, base, z, w * 0.44, h * 0.9, d);
+    piece(boxGeo, trim, x, base + h * 0.55, z, w * 0.2, 1.4, d * 0.5);
+    piece(boxGeo, trim, x - w * 0.28, top - 0.1, z, w * 0.44 + 0.2, 0.22, d + 0.2);
+    piece(boxGeo, trim, x + w * 0.28, base + h * 0.9 - 0.1, z, w * 0.44 + 0.2, 0.22, d + 0.2);
+    piece(cylGeo, spireMat, x - w * 0.28, top, z, 0.1, 3, 0.1, false);
+  } else if (style === 'brick') {
+    // Brick walk-up: cornice, fire escape, water tower, chimney.
+    piece(boxGeo, trim, x, top - 0.25, z, w + 0.3, 0.3, d + 0.3);
+    piece(boxGeo, limestoneMat, x, top - 0.55, z, w + 0.1, 0.12, d + 0.1, false);
+    if (w > 2.4) {
+      const fx = x + w * 0.22;
+      for (let yy = base + 2.6; yy < top - 1.5; yy += 2.6) {
+        piece(boxGeo, darkMat, fx, yy, front + 0.35, 1.3, 0.06, 0.6, false);
+        piece(boxGeo, darkMat, fx, yy + 0.06, front + 0.62, 1.3, 0.7, 0.04, false);
+        piece(boxGeo, darkMat, fx - 0.5, yy + 0.06, front + 0.35, 0.05, 2.4, 0.05, false);
+      }
+    }
+    const tx = x - w * 0.25;
+    const tz = z - d * 0.2;
+    piece(cylGeo, darkMat, tx, top, tz, 0.5, 0.6, 0.5, false);
+    piece(cylGeo, tankMat, tx, top + 0.6, tz, 0.9, 1.1, 0.9);
+    piece(coneGeo, trim, tx, top + 1.7, tz, 0.95, 0.35, 0.95);
+    piece(boxGeo, trim, x + w * 0.3, top, z + d * 0.3, 0.45, 0.9, 0.45, false);
+  } else if (style === 'modern') {
+    // White slab with balcony bands and a rooftop garden.
+    for (let yy = base + 2.4; yy < top - 0.5; yy += 2.4) piece(boxGeo, whiteMat, x, yy, front + 0.18, w * 0.92, 0.12, 0.4, false);
+    piece(boxGeo, trim, x, top - 0.1, z, w + 0.16, 0.18, d + 0.16);
+    piece(boxGeo, hedgeMat, x - w * 0.2, top, z, w * 0.4, 0.5, d * 0.6, false);
+    piece(boxGeo, glassMat, x + w * 0.25, top, z, w * 0.3, 1.0, d * 0.4, false);
+  } else if (style === 'civic') {
+    // Civic hall: colonnade, pediment and a copper dome.
+    const n = Math.max(3, Math.floor(w / 1.1));
+    for (let i = 0; i < n; i++) {
+      const cx = x - w / 2 + 0.55 + (i * (w - 1.1)) / Math.max(1, n - 1);
+      piece(cylGeo, limestoneMat, cx, base, front + 0.5, 0.3, shaft, 0.3);
+    }
+    piece(boxGeo, limestoneMat, x, top, z + d * 0.25, w + 0.4, 0.5, d * 0.5 + 1.2);
+    const ped = piece(pyramidGeo, limestoneMat, x, top + 0.5, front + 0.1, w + 0.2, 1.1, 1.4);
+    ped.scale.z = 1.4;
+    const r = Math.min(w, d) * 0.4;
+    piece(cylGeo, limestoneMat, x, top, z - d * 0.1, r * 1.1, 1.0, r * 1.1);
+    const dome = piece(sphereGeo, copperMat, x, top + 1.0 - r * 0.2, z - d * 0.1, r * 2, r * 2.2, r * 2);
+    dome.castShadow = true;
+    piece(cylGeo, spireMat, x, top + 1.0 + r * 0.9, z - d * 0.1, 0.1, 1.2, 0.1, false);
+  } else if (style === 'shop') {
+    // Shopfront with a hipped terracotta roof and a chimney.
+    piece(boxGeo, trim, x, top - 0.12, z, w + 0.2, 0.15, d + 0.2);
+    const roof = piece(pyramidGeo, terracottaRoof, x, top, z, w * 1.15, Math.min(2.4, minSide * 0.6), d * 1.15);
+    roof.castShadow = true;
+    piece(boxGeo, brickMat, x + w * 0.3, top, z - d * 0.2, 0.4, Math.min(2.4, minSide * 0.6) + 0.5, 0.4, false);
+    if (w > 2) piece(boxGeo, awningMat, x, base + 1.15, front + 0.25, Math.min(w * 0.8, 3), 0.1, 0.6);
+  }
 }
 
 function decorate(b, w, h, d) {

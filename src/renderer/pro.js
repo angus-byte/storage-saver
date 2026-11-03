@@ -312,7 +312,9 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
         toast('Welcome to Gigapolis Pro. Deep Clean and unlimited Demolish are unlocked.');
       };
       card.querySelector('#pro-activate').onclick = doActivate;
-      card.querySelector('#pro-key').onkeydown = (e) => e.key === 'Enter' && doActivate();
+      card.querySelector('#pro-key').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') doActivate();
+      });
     }
     card.querySelector('.close').onclick = () => (modal.hidden = true);
     modal.hidden = false;
