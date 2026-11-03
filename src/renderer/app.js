@@ -123,7 +123,9 @@ scene.add(clouds);
       s.position.set((i - n / 2) * 7 + Math.random() * 3, Math.random() * 2, Math.random() * 4);
       g.add(s);
     }
-    g.position.set(x, y, z);
+    // Clouds whose track crosses the city fly above the tallest spire; the
+    // low ones stay out beyond the plinth so nothing drifts through a tower.
+    g.position.set(x, Math.abs(z) < 70 ? Math.max(y, 92) : y, z);
     if (z > 100) g.scale.setScalar(0.55); // the cloud nearest the camera stays small
     g.userData.speed = 0.4 + Math.random() * 0.4;
     clouds.add(g);
@@ -772,9 +774,12 @@ function trafficSignals(x0, z0, w, d) {
   for (const [x, z] of corners) {
     piece(cylGeo, poleMat, x, 1.1, z, 0.08, 2.6, 0.08, false);
     piece(boxGeo, signalMat, x, 3.6, z, 0.3, 0.8, 0.3, false);
-    const go = Math.random() < 0.5;
-    const light = piece(sphereGeo, new THREE.MeshStandardMaterial({ color: go ? 0x3ddc84 : 0xff4d4d, emissive: go ? 0x1faa5a : 0xcc2222, emissiveIntensity: 1.2 }), x, go ? 3.7 : 4.15, z, 0.18, 0.18, 0.18, false);
-    light.userData.blink = Math.random() * 6;
+    // Signals at the left/right corners govern the north-south streets, the
+    // others the east-west ones; cars read the same phase (see updateLife).
+    const axis = (x < x0 + 1) === (z < z0 + 1) ? 'z' : 'x';
+    const light = piece(sphereGeo, new THREE.MeshStandardMaterial({ color: 0x3ddc84, emissive: 0x1faa5a, emissiveIntensity: 1.2 }), x, 3.7, z + 0.17, 0.16, 0.16, 0.16, false);
+    light.userData.signalAxis = axis;
+    light.userData.on = true;
   }
 }
 
@@ -856,16 +861,20 @@ function buildStreets(rects) {
     const len = st.to - st.from;
     const spots = [st.from + 3.2, st.to - 3.2];
     if (len > 40) spots.push((st.from + st.to) / 2);
-    for (const sp of spots) crosswalk(st, sp);
+    st.stops = spots;
+    for (const sp of spots) {
+      crosswalk(st, sp);
+      roadSign(st, sp);
+    }
     parkedCars(st);
   }
 
   // Ring road around the whole city.
-  const rx = BASE_W / 2 + 0.9;
-  const rz = BASE_D / 2 + 0.9;
+  const rx = BASE_W / 2 - 0.25; // centre of the ring road, inside the asphalt
+  const rz = BASE_D / 2 - 0.25;
   const ring = { loop: true, points: [[-rx, -rz], [rx, -rz], [rx, rz], [-rx, rz]] };
   const paths = [ring];
-  for (const st of streets) paths.push({ loop: false, points: st.axis === 'z' ? [[st.at, st.from], [st.at, st.to]] : [[st.from, st.at], [st.to, st.at]] });
+  for (const st of streets) paths.push({ loop: false, street: st, points: st.axis === 'z' ? [[st.at, st.from], [st.at, st.to]] : [[st.from, st.at], [st.to, st.at]] });
   for (const pth of paths) pth.length = pathLength(pth);
 
   // Cars.
@@ -895,6 +904,47 @@ function addRange(map, key, from, to) {
   }
   rest.push(merged);
   map.set(key, rest);
+}
+
+// Signal phase: north-south streets get 5 s green, then east-west, with a
+// short all-red gap so nobody meets in the middle of the junction.
+function greenFor(axis, t) {
+  const ph = t % 11;
+  if (axis === 'z') return ph < 5;
+  return ph >= 5.5 && ph < 10.5;
+}
+
+const signMats = {
+  stop: new THREE.MeshStandardMaterial({ color: 0xd62828, roughness: 0.6 }),
+  blue: new THREE.MeshStandardMaterial({ color: 0x2b6cb0, roughness: 0.6 }),
+  yellow: new THREE.MeshStandardMaterial({ color: 0xf6c90e, roughness: 0.6 }),
+};
+const octGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 8);
+octGeo.rotateX(Math.PI / 2);
+
+function roadSign(st, pos) {
+  // One sign on the pavement beside each crossing: stop, one-way, or a warning.
+  const side = Math.random() < 0.5 ? 1 : -1;
+  const off = STREET / 2 + 0.45;
+  const x = st.axis === 'z' ? st.at + side * off : pos + 2.2;
+  const z = st.axis === 'z' ? pos + 2.2 : st.at + side * off;
+  piece(cylGeo, poleMat, x, 1.1, z, 0.06, 2.4, 0.06, false);
+  const kind = Math.random();
+  if (kind < 0.4) {
+    piece(octGeo, signMats.stop, x, 3.3, z, 0.8, 0.8, 0.08, false);
+    piece(boxGeo, whiteMat, x, 3.25, z + 0.05, 0.5, 0.1, 0.02, false);
+  } else if (kind < 0.7) {
+    piece(boxGeo, signMats.blue, x, 3.1, z, 0.9, 0.5, 0.08, false);
+    piece(boxGeo, whiteMat, x, 3.33, z + 0.05, 0.55, 0.08, 0.02, false);
+  } else {
+    const tri = piece(coneGeo, signMats.yellow, x, 2.95, z, 0.9, 0.8, 0.08, false);
+    tri.rotation.y = 0;
+    piece(boxGeo, signalMat, x, 3.15, z + 0.05, 0.08, 0.35, 0.02, false);
+  }
+  if (st.axis === 'x') {
+    // Face the sign along the street.
+    for (let i = extras.length - 3; i < extras.length; i++) if (extras[i]) extras[i].rotation.y = Math.PI / 2;
+  }
 }
 
 function crosswalk(st, pos) {
@@ -989,7 +1039,20 @@ const _up = new THREE.Vector3(0, 1, 0);
 function updateLife(dt, t) {
   if (carMesh) {
     cars.forEach((c, i) => {
-      c.s += c.speed * dt * (c.lane > 0 ? 1 : -1);
+      const dir = c.lane > 0 ? 1 : -1;
+      let v = c.speed;
+      const st = c.path.street;
+      if (st && !greenFor(st.axis, t)) {
+        // Stop line 2 units before each crossing in our direction of travel.
+        const L = c.path.length;
+        const pos = st.from + (((c.s % L) + L) % L); // path starts at st.from
+        for (const sp of st.stops) {
+          const line = sp - dir * 2.2;
+          const gap = (line - pos) * dir;
+          if (gap > 0 && gap < 1.2) v = 0;
+        }
+      }
+      c.s += v * dt * dir;
       pointAt(c.path, c.s, _pt);
       // Right-hand lane offset.
       const ox = -_pt.dz * c.lane * 1.1;
@@ -1022,11 +1085,13 @@ function updateLife(dt, t) {
     peopleBody.instanceMatrix.needsUpdate = true;
     peopleHead.instanceMatrix.needsUpdate = true;
   }
-  // Blinking traffic signals.
+  // Traffic signals follow the global phase.
   for (const ex of extras) {
-    if (ex.userData.blink !== undefined && Math.floor((t + ex.userData.blink) / 4) % 2 === 0 !== ex.userData.on) {
-      ex.userData.on = !ex.userData.on;
-      const go = ex.userData.on;
+    const ax = ex.userData.signalAxis;
+    if (!ax) continue;
+    const go = greenFor(ax, t);
+    if (go !== ex.userData.on) {
+      ex.userData.on = go;
       ex.material.color.setHex(go ? 0x3ddc84 : 0xff4d4d);
       ex.material.emissive.setHex(go ? 0x1faa5a : 0xcc2222);
       ex.position.y = go ? 3.7 : 4.15;
