@@ -58,6 +58,7 @@ const MAX_H = 46;
 // State
 // ---------------------------------------------------------------------------
 const state = { disk: null, tree: null, suggestions: null, path: [], selected: new Map(), scanning: false };
+let night = false;
 
 // ---------------------------------------------------------------------------
 // Scene setup
@@ -88,7 +89,8 @@ controls.minDistance = 50;
 controls.maxDistance = 520;
 controls.target.set(0, 14, 0);
 
-scene.add(new THREE.HemisphereLight(0xdff3ef, 0x6b6558, 1.0));
+const hemi = new THREE.HemisphereLight(0xdff3ef, 0x6b6558, 1.0);
+scene.add(hemi);
 const key = new THREE.DirectionalLight(0xffd9a8, 2.6); // warm late-afternoon sun
 key.position.set(120, 120, 90);
 key.castShadow = true;
@@ -131,6 +133,67 @@ scene.add(clouds);
     clouds.add(g);
   }
 })();
+
+// Night sky: stars on a far dome, a moon, and a glow sprite texture for lamps and neon.
+const nightOnly = []; // objects shown only at night
+const stars = (() => {
+  const n = 2200;
+  const pos = new Float32Array(n * 3);
+  const col = new Float32Array(n * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < n; i++) {
+    const u = Math.random();
+    const v = Math.random();
+    const theta = u * Math.PI * 2;
+    const phi = Math.acos(1 - 2 * v); // the city floats in the sky, so stars go all the way round
+    const r = 750;
+    pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+    pos[i * 3 + 1] = r * Math.cos(phi) + 20;
+    pos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+    c.setHSL(0.55 + Math.random() * 0.12, 0.3, 0.75 + Math.random() * 0.25);
+    col[i * 3] = c.r;
+    col[i * 3 + 1] = c.g;
+    col[i * 3 + 2] = c.b;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const m = new THREE.PointsMaterial({ size: 6, sizeAttenuation: true, vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false, fog: false });
+  const pts = new THREE.Points(g, m);
+  pts.visible = false;
+  scene.add(pts);
+  nightOnly.push(pts);
+  return pts;
+})();
+const glowTex = (() => {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d');
+  const gr = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(255,255,255,1)');
+  gr.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+  gr.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gr;
+  ctx.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+})();
+function glow(x, y, z, size, color, opacity = 0.7) {
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  sp.position.set(x, y, z);
+  sp.scale.set(size, size, 1);
+  sp.visible = night;
+  return sp;
+}
+const moon = new THREE.Mesh(new THREE.SphereGeometry(9, 24, 18), new THREE.MeshBasicMaterial({ color: 0xf6f2dc, fog: false }));
+moon.position.set(-260, 170, -330);
+moon.visible = false;
+scene.add(moon);
+nightOnly.push(moon);
+const moonGlow = glow(-260, 170, -330, 70, 0xcfd8ff, 0.5);
+scene.add(moonGlow);
+nightOnly.push(moonGlow);
 
 // The plinth: a chunky grey base; its top is the asphalt the districts sit on.
 const city = new THREE.Group();
@@ -178,6 +241,32 @@ const laneMat = new THREE.MeshBasicMaterial({ color: 0xf2f0e6 });
 
 // Window texture: light facade with framed windows, floor bands and a few lit rooms.
 // The material colour tints it, so one texture serves every category.
+// Night version: black facade, only the lit rooms glow.
+function makeNightWindowTexture(seed) {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, 128, 128);
+  let r = seed * 7 + 3;
+  const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const v = rnd();
+      if (v < 0.38) {
+        ctx.fillStyle = v < 0.26 ? '#ffd58a' : v < 0.33 ? '#fff3c4' : '#9fd8ff';
+        ctx.fillRect(x * 16 + 3, y * 16 + 2, 10, 9);
+      }
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const nightWindowTextures = [1, 2, 3, 4].map(makeNightWindowTexture);
+
 function makeWindowTexture(seed) {
   const c = document.createElement('canvas');
   c.width = 128;
@@ -220,7 +309,13 @@ function facadeMaterial(kind, w, h, d, variant = 0) {
   const hsl = {};
   color.getHSL(hsl);
   color.setHSL(hsl.h + (Math.random() - 0.5) * 0.03, hsl.s, Math.min(0.9, hsl.l + (Math.random() - 0.5) * 0.12));
-  return new THREE.MeshStandardMaterial({ color, map: tex, roughness: 0.7, metalness: 0.05 });
+  const em = nightWindowTextures[variant % nightWindowTextures.length].clone();
+  em.needsUpdate = true;
+  em.repeat.copy(tex.repeat);
+  const mat = new THREE.MeshStandardMaterial({ color, map: tex, roughness: 0.7, metalness: 0.05, emissive: 0xffffff, emissiveMap: em, emissiveIntensity: night ? 0.9 : 0 });
+  mat.userData.dayI = 0;
+  mat.userData.nightI = 0.9;
+  return mat;
 }
 function trimMaterial(base) {
   const c = base.color.clone();
@@ -235,7 +330,9 @@ const awningMat = new THREE.MeshStandardMaterial({ color: 0xd94f4f, roughness: 0
 const tankMat = new THREE.MeshStandardMaterial({ color: 0x8a6a4e, roughness: 0.9 });
 const acMat = new THREE.MeshStandardMaterial({ color: 0xcfd4da, roughness: 0.8 });
 const poleMat = new THREE.MeshStandardMaterial({ color: 0x5a6068, roughness: 0.6, metalness: 0.5 });
-const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff1c2, emissive: 0xffd27a, emissiveIntensity: 1.4, roughness: 0.4 });
+const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff1c2, emissive: 0xffd27a, emissiveIntensity: 0.4, roughness: 0.4 });
+lampMat.userData.dayI = 0.4;
+lampMat.userData.nightI = 2.6;
 const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf4f2ea, roughness: 0.9 });
 const vehicleMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.3 });
 const personMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
@@ -281,7 +378,9 @@ function clearBlocks() {
   treeSpots = [];
   cars = [];
   people = [];
-  carMesh = cabMesh = peopleBody = peopleHead = null;
+  carMesh = cabMesh = headMesh = tailMesh = peopleBody = peopleHead = null;
+  // Drop night-only objects that belonged to the old layout.
+  for (let i = nightOnly.length - 1; i >= 0; i--) if (nightOnly[i].parent === blocks || !nightOnly[i].parent) nightOnly.splice(i, 1);
 }
 
 let maxSizeInView = 1;
@@ -333,6 +432,32 @@ function layout() {
   renderCrumbs();
   renderTop(node);
   renderLeave(node);
+  applyNight();
+}
+
+// Day / night.
+function applyNight() {
+  document.body.classList.toggle('night', night);
+  $('btn-night').textContent = night ? '☀ Day' : '☾ Night';
+  scene.fog.color.setHex(night ? 0x0c1430 : 0x4fbdbb);
+  hemi.color.setHex(night ? 0x3a4a7a : 0xdff3ef);
+  hemi.groundColor.setHex(night ? 0x0c1020 : 0x6b6558);
+  hemi.intensity = night ? 0.35 : 1.0;
+  key.color.setHex(night ? 0x9fb4ff : 0xffd9a8);
+  key.intensity = night ? 0.55 : 2.6;
+  fill.intensity = night ? 0.15 : 0.45;
+  renderer.toneMappingExposure = night ? 0.95 : 1.1;
+  for (const o of nightOnly) o.visible = night;
+  const setMat = (mat) => {
+    if (mat && mat.userData && mat.userData.nightI !== undefined) mat.emissiveIntensity = night ? mat.userData.nightI : mat.userData.dayI;
+  };
+  for (const m of meshes) setMat(m.material);
+  for (const e of extras) setMat(e.material);
+  clouds.children.forEach((c) => c.children.forEach((s) => (s.material.opacity = night ? 0.22 : 0.5)));
+}
+function toggleNight() {
+  night = !night;
+  applyNight();
 }
 
 // Floating "Leave" button over the city when you have walked into a folder.
@@ -491,6 +616,7 @@ function decorate(b, w, h, d) {
     t1.material = b.material;
   } else if (h > 12 && minSide > 2.2) {
     // Mid-rise: cornice, parapet, rooftop water tank or plant room, AC units.
+    if (Math.random() < 0.5) neonSign(x + (Math.random() - 0.5) * w * 0.4, base + h * 0.55, front + 0.12, Math.min(h * 0.35, 6), Math.random() < 0.5);
     piece(boxGeo, trim, x, top - 0.2, z, w + 0.22, 0.22, d + 0.22);
     const roll = Math.random();
     if (roll < 0.4) {
@@ -512,7 +638,15 @@ function decorate(b, w, h, d) {
       const bw = Math.min(w * 0.8, 3.2);
       piece(cylGeo, poleMat, x - bw * 0.35, top, z + d * 0.3, 0.08, 1.2, 0.08, false);
       piece(cylGeo, poleMat, x + bw * 0.35, top, z + d * 0.3, 0.08, 1.2, 0.08, false);
-      const bb = piece(boxGeo, new THREE.MeshStandardMaterial({ color: BILLBOARD_COLORS[Math.floor(Math.random() * BILLBOARD_COLORS.length)], emissive: 0x222222, roughness: 0.6 }), x, top + 1.1, z + d * 0.3, bw, 1.4, 0.12);
+      const bbc = BILLBOARD_COLORS[Math.floor(Math.random() * BILLBOARD_COLORS.length)];
+      const bbm = new THREE.MeshStandardMaterial({ color: bbc, emissive: bbc, emissiveIntensity: 0.15, roughness: 0.6 });
+      bbm.userData.dayI = 0.15;
+      bbm.userData.nightI = 1.6;
+      const bb = piece(boxGeo, bbm, x, top + 1.1, z + d * 0.3, bw, 1.4, 0.12);
+      const bg = glow(x, top + 1.1, z + d * 0.3 + 0.3, bw * 1.6, bbc, 0.45);
+      blocks.add(bg);
+      extras.push(bg);
+      nightOnly.push(bg);
       piece(boxGeo, whiteMat, x, top + 1.3, z + d * 0.3 + 0.09, bw * 0.7, 0.35, 0.02, false);
       bb.castShadow = true;
     }
@@ -657,6 +791,26 @@ function placeProp(x, z, theme, alt) {
   }
 }
 
+const NEON = [0xff2d95, 0x00f0ff, 0xb5ff2d, 0xffb300, 0xa259ff];
+function neonSign(x, y, z, len, vertical) {
+  const c = NEON[Math.floor(Math.random() * NEON.length)];
+  const m = new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.25, roughness: 0.4 });
+  m.userData.dayI = 0.25;
+  m.userData.nightI = 2.2;
+  if (vertical) {
+    piece(boxGeo, signalMat, x, y - len / 2 - 0.1, z - 0.06, 0.7, len + 0.2, 0.1, false);
+    piece(boxGeo, m, x, y - len / 2, z, 0.35, len, 0.08, false);
+    for (let k = 0; k < Math.floor(len / 0.9); k++) piece(boxGeo, signalMat, x, y - len / 2 + 0.2 + k * 0.9, z + 0.05, 0.4, 0.08, 0.03, false);
+  } else {
+    piece(boxGeo, signalMat, x, y, z - 0.06, len + 0.2, 0.9, 0.1, false);
+    piece(boxGeo, m, x, y + 0.2, z, len, 0.4, 0.08, false);
+  }
+  const g = glow(x, vertical ? y : y + 0.4, z + 0.4, vertical ? len * 0.9 : len * 1.1, c, 0.5);
+  blocks.add(g);
+  extras.push(g);
+  nightOnly.push(g);
+}
+
 function addLaneMarks(r) {
   // Dashed centre line along the street on the right and bottom edges of this district.
   const dash = (x, z, len, alongX) => {
@@ -747,6 +901,10 @@ let cars = [];
 let people = [];
 let carMesh = null;
 let cabMesh = null;
+let headMesh = null;
+let tailMesh = null;
+const headMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff6d5, emissiveIntensity: 2.5 });
+const tailMat = new THREE.MeshStandardMaterial({ color: 0xff3b3b, emissive: 0xff2222, emissiveIntensity: 2.0 });
 let peopleBody = null;
 let peopleHead = null;
 
@@ -765,6 +923,10 @@ function streetLights(x0, z0, w, d) {
     piece(cylGeo, poleMat, x, 1.1, z, 0.1, 3.2, 0.1, false);
     piece(boxGeo, poleMat, x, 4.3, z, 0.12, 0.1, 0.9, false);
     piece(sphereGeo, lampMat, x, 4.1, z + 0.35, 0.32, 0.22, 0.32, false);
+    const g = glow(x, 4.0, z + 0.35, 5, 0xffc77a, 0.55);
+    blocks.add(g);
+    extras.push(g);
+    nightOnly.push(g);
   }
 }
 
@@ -891,6 +1053,12 @@ function buildStreets(rects) {
   carMesh.castShadow = cabMesh.castShadow = true;
   blocks.add(carMesh, cabMesh);
   extras.push(carMesh, cabMesh);
+  headMesh = new THREE.InstancedMesh(sphereGeo, headMat, cars.length * 2);
+  tailMesh = new THREE.InstancedMesh(sphereGeo, tailMat, cars.length * 2);
+  headMesh.visible = tailMesh.visible = night;
+  blocks.add(headMesh, tailMesh);
+  extras.push(headMesh, tailMesh);
+  nightOnly.push(headMesh, tailMesh);
 }
 
 function addRange(map, key, from, to) {
@@ -1065,9 +1233,27 @@ function updateLife(dt, t) {
       _p.set(_pt.x + ox, 1.07, _pt.z + oz);
       _m.compose(_p, _q, _sc.set(0.7, 0.3, 0.9));
       cabMesh.setMatrixAt(i, _m);
+      if (night && headMesh) {
+        const fx = _pt.dx * dir;
+        const fz = _pt.dz * dir;
+        const rx = -_pt.dz * dir;
+        const rz = _pt.dx * dir;
+        for (const sgn of [-1, 1]) {
+          _p.set(_pt.x + ox + fx * 0.85 + rx * sgn * 0.26, 0.9, _pt.z + oz + fz * 0.85 + rz * sgn * 0.26);
+          _m.compose(_p, _q, _sc.set(0.16, 0.12, 0.1));
+          headMesh.setMatrixAt(i * 2 + (sgn > 0 ? 1 : 0), _m);
+          _p.set(_pt.x + ox - fx * 0.85 + rx * sgn * 0.26, 0.9, _pt.z + oz - fz * 0.85 + rz * sgn * 0.26);
+          _m.compose(_p, _q, _sc.set(0.14, 0.1, 0.08));
+          tailMesh.setMatrixAt(i * 2 + (sgn > 0 ? 1 : 0), _m);
+        }
+      }
     });
     carMesh.instanceMatrix.needsUpdate = true;
     cabMesh.instanceMatrix.needsUpdate = true;
+    if (night && headMesh) {
+      headMesh.instanceMatrix.needsUpdate = true;
+      tailMesh.instanceMatrix.needsUpdate = true;
+    }
   }
   if (peopleBody) {
     people.forEach((pp, i) => {
@@ -1305,6 +1491,7 @@ function animate() {
   const t = clock.elapsedTime;
   controls.update();
   updateLife(dt, t);
+  if (night) stars.material.opacity = 0.78 + 0.2 * Math.sin(t * 2.3);
   for (const c of clouds.children) {
     c.position.x += c.userData.speed * dt * 1.8;
     if (c.position.x > 280) c.position.x = -280;
@@ -1546,6 +1733,7 @@ $('btn-pick').onclick = async () => {
 };
 
 $('btn-leave').onclick = leaveBuilding;
+$('btn-night').onclick = toggleNight;
 renderLegend();
 api.diskInfo().then((d) => {
   state.disk = d;
@@ -1557,4 +1745,4 @@ if (DEMO) {
 }
 
 // Exposed for automated UI checks.
-window.__storageSaver = { state, openMenu, layout };
+window.__storageSaver = { state, openMenu, layout, toggleNight };
