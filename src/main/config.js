@@ -5,12 +5,11 @@
 const GB = 1024 ** 3;
 
 module.exports = {
-  // Checkout page opened by "Buy Pro". Placeholder until the product exists.
-  checkoutUrl: process.env.GIGAPOLIS_CHECKOUT_URL || 'https://gigapolis.lemonsqueezy.com/buy/REPLACE_WITH_PRODUCT_LINK',
-  // Only licence keys from this store + product unlock Pro. null = accept any
-  // Lemon Squeezy key (development only, set both before shipping).
-  storeId: Number(process.env.GIGAPOLIS_STORE_ID) || null,
-  productId: Number(process.env.GIGAPOLIS_PRODUCT_ID) || null,
+  // Checkout page opened by "Buy Pro".
+  checkoutUrl: process.env.GIGAPOLIS_CHECKOUT_URL || 'https://gigopolis.lemonsqueezy.com/checkout/buy/d9c533fc-fe6a-43c8-988f-f0b9bf46b9bc',
+  // Only licence keys from this store + product unlock Pro.
+  storeId: Number(process.env.GIGAPOLIS_STORE_ID) || 513897,
+  productId: Number(process.env.GIGAPOLIS_PRODUCT_ID) || 1496849,
   priceLabel: '$19.99',
   // Free plan: total bytes that may be demolished (moved to Trash) over the
   // lifetime of the install. Emptying the Trash itself is never counted.
