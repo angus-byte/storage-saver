@@ -107,9 +107,9 @@ scene.add(fill);
 const clouds = new THREE.Group();
 scene.add(clouds);
 (function makeClouds() {
-  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: 0.92 });
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: 0.5, depthWrite: false });
   const geo = new THREE.SphereGeometry(1, 12, 10);
-  const spots = [[-140, 90, -120], [110, 120, -160], [190, 70, 60], [-180, 55, 90], [30, 140, -220]];
+  const spots = [[-120, 42, -90], [90, 55, -130], [170, 38, -30], [-150, 30, 70], [20, 60, -180], [-60, 36, 150]];
   for (const [x, y, z] of spots) {
     const g = new THREE.Group();
     const n = 4 + Math.floor(Math.random() * 3);
@@ -121,6 +121,7 @@ scene.add(clouds);
       g.add(s);
     }
     g.position.set(x, y, z);
+    if (z > 100) g.scale.setScalar(0.55); // the cloud nearest the camera stays small
     g.userData.speed = 0.4 + Math.random() * 0.4;
     clouds.add(g);
   }
@@ -272,6 +273,24 @@ function layout() {
   placeTrees();
   renderCrumbs();
   renderTop(node);
+  renderLeave(node);
+}
+
+// Floating "Leave" button over the city when you have walked into a folder.
+function renderLeave(node) {
+  const btn = $('btn-leave');
+  if (!state.path.length) {
+    btn.hidden = true;
+    return;
+  }
+  btn.hidden = false;
+  btn.textContent = `← Leave ${node.name}`;
+}
+function leaveBuilding() {
+  if (!state.path.length) return;
+  closeMenu();
+  state.path.pop();
+  layout();
 }
 
 function placeSuburb(r) {
@@ -529,6 +548,7 @@ function openMenu(item, x, y) {
   const canDemolish = item.path && !item.aggregate && !item.virtual;
   menu.innerHTML = `<div class="menu-title"><b>${esc(item.name)}</b><span>${fmt(item.size)} · ${KIND_LABELS[item.kind] || item.kind}</span></div>` +
     (item.isDir && !item.virtual ? `<button data-act="open">Walk in</button>` : '') +
+    (state.path.length ? `<button data-act="leave">← Leave ${esc(currentNode().name)}</button>` : '') +
     (item.path && !item.virtual ? `<button data-act="reveal">Show in Finder / Explorer</button>` : '') +
     (canDemolish ? `<button data-act="demolish" class="demolish">Demolish (move to Trash)</button>` : '') +
     (!canDemolish ? `<div class="menu-note">${item.suburb ? 'A suburb' : item.virtual ? 'Not a file' : 'Lots of small files'}: walk in to pick what to demolish.</div>` : '');
@@ -549,6 +569,8 @@ menu.addEventListener('click', async (e) => {
       state.path = target;
       layout();
     }
+  } else if (act === 'leave') {
+    leaveBuilding();
   } else if (act === 'reveal') {
     api.reveal(item.path);
     closeMenu();
@@ -561,7 +583,13 @@ menu.addEventListener('click', async (e) => {
     await demolish(item);
   }
 });
-document.addEventListener('keydown', (e) => e.key === 'Escape' && closeMenu());
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (!menu.hidden) closeMenu();
+    else leaveBuilding();
+  }
+  if (e.key === 'Backspace' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) leaveBuilding();
+});
 
 async function demolish(item) {
   const mesh = meshes.find((m) => m.userData.item === item);
@@ -834,6 +862,7 @@ $('btn-pick').onclick = async () => {
   else if (DEMO) toast('Demo mode: folder picker is only available in the desktop app');
 };
 
+$('btn-leave').onclick = leaveBuilding;
 renderLegend();
 api.diskInfo().then((d) => {
   state.disk = d;
