@@ -1,6 +1,6 @@
 {
   "name": "storage-saver",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Keeps your computer's storage low. 3D visualiser of where your space goes, plus safe one-click cleanup.",
   "main": "src/main/main.js",
   "scripts": {
@@ -21,7 +21,7 @@
   },
   "build": {
     "appId": "com.sommarfilms.storagesaver",
-    "productName": "Storage Saver",
+    "productName": "Gigapolis",
     "files": [
       "src/**/*",
       "package.json",
@@ -37,12 +37,12 @@
       "gatekeeperAssess": false,
       "notarize": true,
       "extendInfo": {
-        "NSDesktopFolderUsageDescription": "Storage Saver measures what is on your Desktop so it can show it in the city.",
-        "NSDocumentsFolderUsageDescription": "Storage Saver measures your Documents so it can show them in the city.",
-        "NSDownloadsFolderUsageDescription": "Storage Saver measures your Downloads so it can show them in the city.",
-        "NSRemovableVolumesUsageDescription": "Storage Saver can measure external drives you choose.",
-        "NSNetworkVolumesUsageDescription": "Storage Saver can measure network drives you choose.",
-        "NSPhotoLibraryUsageDescription": "Storage Saver measures the size of your Photos library."
+        "NSDesktopFolderUsageDescription": "Gigapolis measures what is on your Desktop so it can show it in the city.",
+        "NSDocumentsFolderUsageDescription": "Gigapolis measures your Documents so it can show them in the city.",
+        "NSDownloadsFolderUsageDescription": "Gigapolis measures your Downloads so it can show them in the city.",
+        "NSRemovableVolumesUsageDescription": "Gigapolis can measure external drives you choose.",
+        "NSNetworkVolumesUsageDescription": "Gigapolis can measure network drives you choose.",
+        "NSPhotoLibraryUsageDescription": "Gigapolis measures the size of your Photos library."
       },
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },

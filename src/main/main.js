@@ -20,7 +20,7 @@ function createWindow() {
     height: 900,
     minWidth: 960,
     minHeight: 600,
-    title: 'Storage Saver',
+    title: 'Gigapolis',
     backgroundColor: '#0b0f17',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

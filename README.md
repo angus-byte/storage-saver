@@ -1,9 +1,9 @@
-# Storage Saver
+# Gigapolis
 
 Keeps your computer's storage low. Your files become a 3D city: each category is a suburb (Media District, Cache Town, Downloads…), every folder or big file is a building whose height is its size, and free space is a park. Click a building for options, including **Demolish** (moves it to the Trash). A Safe clean panel finds caches, old downloads, trash and stale large files to clear in one go.
 
-![Storage Saver by day](docs/screenshot.png)
-![Storage Saver by night](docs/night.png)
+![Gigapolis by day](docs/screenshot.png)
+![Gigapolis by night](docs/night.png)
 
 ## Run it
 
@@ -27,9 +27,9 @@ Click **Scan my files** (scans your home folder) or **Choose folder…** for any
 
 ## Install on a Mac
 
-Download the latest `.dmg` from [Releases](https://github.com/angus-byte/storage-saver/releases) (`-arm64` for Apple silicon, otherwise the Intel one), open it and drag Storage Saver to Applications.
+Download the latest `.dmg` from [Releases](https://github.com/angus-byte/storage-saver/releases) (`-arm64` for Apple silicon, otherwise the Intel one), open it and drag Gigapolis to Applications.
 
-The build is not notarised with Apple yet, so on first launch macOS will say it cannot verify the developer. Right-click the app, choose **Open**, then **Open** again. If macOS reports the app as "damaged", run `xattr -dr com.apple.quarantine "/Applications/Storage Saver.app"` once in Terminal.
+The build is signed with a Developer ID and notarised by Apple, so it opens like any other Mac app.
 
 Builds come from the **Build Mac app** GitHub Action (run it by hand or push a `v*` tag). Locally on a Mac, `npm run dist` writes the `.dmg` to `dist/`.
 
