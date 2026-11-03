@@ -266,6 +266,22 @@ async function logsAndInstallers(tree, home, now) {
   return out.sort((a, b) => b.size - a.size);
 }
 
+// Copies of attachments Mail saved when you opened them. The originals stay in
+// the emails, so Mail fetches them again if you open them again.
+async function mailAttachments(home) {
+  const places = [
+    ['Mail attachments', 'Library/Containers/com.apple.mail/Data/Library/Mail Downloads'],
+    ['Mail attachments (old Mail)', 'Library/Mail Downloads'],
+  ];
+  const out = [];
+  for (const [name, rel] of places) {
+    const p = path.join(home, rel);
+    const size = await sizeOf(p);
+    if (size > 5 * MB) out.push({ name, path: p, size, kind: 'documents', mtime: await newestMtime(p), isDir: true, mode: 'empty', note: 'Opened attachments. Still in the emails.' });
+  }
+  return out;
+}
+
 function renderCaches(tree) {
   const seen = [];
   const out = [];
@@ -283,13 +299,14 @@ function renderCaches(tree) {
 /** All Deep Clean groups for a scanned tree. */
 async function deepSuggestions(tree, { home = require('os').homedir(), now = Date.now(), platform = process.platform, listApps } = {}) {
   const mac = platform === 'darwin';
-  const [render, dups, leftovers, backups, dev, logs] = await Promise.all([
+  const [render, dups, leftovers, backups, dev, logs, mail] = await Promise.all([
     renderCaches(tree),
     findDuplicates(tree),
     mac ? appLeftovers(home, now, listApps) : [],
     mac ? iosBackups(home, now) : [],
     devJunk(tree, home, now),
     logsAndInstallers(tree, home, now),
+    mac ? mailAttachments(home) : [],
   ]);
   return {
     renderCaches: group(render),
@@ -298,6 +315,7 @@ async function deepSuggestions(tree, { home = require('os').homedir(), now = Dat
     iosBackups: group(backups),
     devJunk: group(dev),
     logsInstallers: group(logs),
+    mailAttachments: group(mail),
   };
 }
 
@@ -311,4 +329,4 @@ function sweepOnly(sugg) {
   return out;
 }
 
-module.exports = { deepSuggestions, sweepOnly, isDeepPath, sizeOf, sameFile, findDuplicates, belongsToApp, renderCaches };
+module.exports = { mailAttachments, deepSuggestions, sweepOnly, isDeepPath, sizeOf, sameFile, findDuplicates, belongsToApp, renderCaches };
