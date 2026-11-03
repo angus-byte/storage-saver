@@ -184,3 +184,23 @@ button.link { background: none; border: none; color: var(--accent); padding: 0 4
 .lock::before { content: ""; position: absolute; left: 5px; top: -12px; width: 16px; height: 16px; border: 4px solid #fff; border-bottom: none; border-radius: 10px 10px 0 0; box-sizing: border-box; }
 .lock::after { content: ""; position: absolute; left: 11px; top: 7px; width: 4px; height: 7px; border-radius: 2px; background: #15a39a; }
 #perm-wait { margin: 10px 0 0; }
+
+/* Files tab: categories, then the files in the one you clicked. */
+#files-head { align-items: center; gap: 8px; }
+#files-head .cat-title { text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--text); flex: 1; display: flex; align-items: center; gap: 7px; font-weight: 600; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#files-head .link { padding: 0; }
+.file-list { list-style: none; margin: 0; padding: 0; font-size: 12.5px; }
+.file-list .file-list { padding-left: 14px; border-left: 1px solid var(--border); margin-left: 9px; }
+.file-list li.cat-row { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 10px; cursor: pointer; }
+.file-list li.cat-row:hover, .file-list .row:hover { background: var(--soft); }
+.file-list .cat-row .name { flex: 1; font-weight: 600; }
+.file-list .row { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 10px; cursor: default; }
+.file-list .chev { width: 10px; color: var(--muted); transition: transform 0.15s; cursor: pointer; }
+.file-list li.open > .row .chev { transform: rotate(90deg); }
+.file-list .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-list .name small { display: block; color: var(--muted); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
+.file-list .size { color: var(--muted); font-variant-numeric: tabular-nums; }
+.file-list .mini { padding: 2px 5px; font-size: 12px; background: transparent; border-radius: 8px; opacity: 0; }
+.file-list .row:hover .mini, .file-list .mini.armed { opacity: 1; }
+.file-list .mini.armed { background: #e5484d; color: #fff; font-size: 11px; }
+.file-list li.muted { padding: 5px 8px; color: var(--muted); }

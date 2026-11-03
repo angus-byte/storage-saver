@@ -54,8 +54,7 @@
     <div id="panel-body">
       <nav class="tabs" id="tabs">
         <button class="tab active" data-tab="clean">Clean up</button>
-        <button class="tab" data-tab="top">Biggest</button>
-        <button class="tab" data-tab="legend">Suburbs</button>
+        <button class="tab" data-tab="files">Files</button>
       </nav>
 
       <section id="tab-clean" class="tab-page">
@@ -65,20 +64,15 @@
         <p class="hint">Nothing is deleted permanently. Items go to the Trash so you can get them back.</p>
       </section>
 
-      <section id="tab-top" class="tab-page" hidden>
-        <div class="section-head"><span>Biggest items here</span></div>
-        <ol id="top-list"></ol>
-      </section>
-
-      <section id="tab-legend" class="tab-page" hidden>
-        <div class="legend" id="legend"></div>
-        <p class="hint">Drag to orbit · Scroll to zoom · Click a building for options · Double-click the sky or press Esc to leave a building.</p>
+      <section id="tab-files" class="tab-page" hidden>
+        <div class="section-head" id="files-head"></div>
+        <div id="files"></div>
+        <p class="hint">Click a building to see its files. Drag to orbit · Scroll to zoom.</p>
       </section>
     </div>
   </aside>
 
   <div id="hud">
-    <button id="btn-leave" class="float" hidden>← Leave</button>
     <button id="btn-night" class="float">☾ Night</button>
   </div>
   <div id="perm" class="overlay" hidden>

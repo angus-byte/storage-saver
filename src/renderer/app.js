@@ -2,6 +2,7 @@ import * as THREE from './vendor/three.module.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { initCityHall } from './cityhall.js';
 import { squarify } from './treemap.js';
+import { categorize, CATEGORIES } from './categories.js';
 import { mockTree, mockSuggestions, mockDisk } from './mock.js';
 import { initPro, demoPlanApi, mockDeep } from './pro.js';
 import { initSeasons } from './seasons.js';
@@ -64,7 +65,9 @@ const KIND_COLORS = {
   other: 0xe3ddd0,
   free: 0x7cc46a,
 };
+for (const c of CATEGORIES) KIND_COLORS[c.id] = c.color;
 const KIND_LABELS = { cache: 'Caches & temp', trash: 'Trash', downloads: 'Downloads & installers', media: 'Video, photo & audio', apps: 'Apps', documents: 'Documents', system: 'System', other: 'Other', free: 'Free space (park)' };
+for (const c of CATEGORIES) KIND_LABELS[c.id] = c.label;
 const BASE_W = 112;
 const BASE_D = 86;
 const STREET = 5; // gap between districts
@@ -75,7 +78,8 @@ const MAX_H = 85;
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-const state = { disk: null, tree: null, suggestions: null, deep: null, path: [], selected: new Map(), scanning: false };
+// city: one node per main category (see categories.js); open: the category whose files show in the panel.
+const state = { disk: null, tree: null, city: [], open: null, suggestions: null, deep: null, selected: new Map(), scanning: false };
 let pro = null; // free / Pro plan UI, see pro.js
 let seasons = null; // Pro autumn / winter, see seasons.js
 let night = false; // target state
@@ -429,16 +433,6 @@ let meshes = []; // hoverable: buildings and district pavements
 let extras = []; // decoration: roofs, trees, labels, lanes
 let treeSpots = [];
 
-function currentNode() {
-  let n = state.tree;
-  for (const name of state.path) {
-    const next = (n.children || []).find((c) => c.name === name && c.isDir);
-    if (!next) break;
-    n = next;
-  }
-  return n;
-}
-
 function clearBlocks() {
   for (const m of meshes) {
     blocks.remove(m);
@@ -469,16 +463,16 @@ function lotFor(size) {
   return 6 + 48 * Math.pow(size / Math.max(maxSizeInView, 1), 0.45);
 }
 
-const SUBURB_NAMES = { cache: 'Cache Canyon', trash: 'Trash Flats', downloads: 'Downtown Downloads', media: 'Media Heights', apps: 'App Avenue', documents: 'Document Docks', system: 'System Hills', other: 'Odds & Ends Village', free: 'Free Space Park' };
-
+// The city shows one building per main category. Each sits on its own block
+// so streets run between them; clicking one lists its files in the panel.
 function layout() {
   clearBlocks();
   closeMenu();
   if (!state.tree) return;
-  const node = currentNode();
-  const items = [...(node.children || [])];
-  const atRoot = state.path.length === 0;
-  if (atRoot && state.disk && state.disk.roots[0]) {
+  const node = state.tree;
+  state.city = categorize(node);
+  const items = [...state.city];
+  if (state.disk && state.disk.roots[0]) {
     const { total, free } = state.disk.roots[0];
     if (total > 0) {
       const otherUsed = Math.max(0, total - free - node.size);
@@ -488,17 +482,17 @@ function layout() {
   }
   items.sort((a, b) => b.size - a.size);
   maxSizeInView = items.length ? items[0].size : 1;
-  // Group into suburbs by category.
+  // One block per building (free space becomes the park).
   const groups = new Map();
   for (const it of items) {
-    const k = it.kind || 'other';
+    const k = it.category || it.name;
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(it);
   }
   const suburbs = [...groups.entries()].map(([kind, list]) => {
     const lots = list.map((it) => ({ size: lotFor(it.size), item: it }));
     const area = lots.reduce((s, l) => s + l.size, 0);
-    return { kind, list, lots, size: area * 1.3 + 24, total: list.reduce((s, i) => s + i.size, 0) };
+    return { kind: list[0].kind, list, lots, size: area * 1.3 + 24, total: list.reduce((s, i) => s + i.size, 0) };
   });
   suburbs.sort((a, b) => b.size - a.size);
   const rects = squarify(suburbs, { x: -BASE_W / 2, y: -BASE_D / 2, w: BASE_W, h: BASE_D });
@@ -507,8 +501,7 @@ function layout() {
   buildPeople(rects);
   placeTrees();
   renderCrumbs();
-  renderTop(node);
-  renderLeave(node);
+  renderFiles();
   applyNight();
 }
 
@@ -587,23 +580,6 @@ function stepNight(dt) {
   applyNight();
 }
 
-// Floating "Leave" button over the city when you have walked into a folder.
-function renderLeave(node) {
-  const btn = $('btn-leave');
-  if (!state.path.length) {
-    btn.hidden = true;
-    return;
-  }
-  btn.hidden = false;
-  btn.textContent = `← Leave ${node.name}`;
-}
-function leaveBuilding() {
-  if (!state.path.length) return;
-  closeMenu();
-  state.path.pop();
-  layout();
-}
-
 function placeSuburb(r) {
   const sub = r.item;
   const x0 = r.x + STREET / 2;
@@ -615,7 +591,7 @@ function placeSuburb(r) {
   const slab = new THREE.Mesh(boxGeo, park ? parkMat : pavementMat);
   slab.position.set(x0 + w / 2, 0.6, z0 + d / 2);
   slab.scale.set(w, 0.5, d);
-  slab.userData = { item: { name: SUBURB_NAMES[sub.kind] || sub.kind, size: sub.total, kind: sub.kind, isDir: false, virtual: true, files: sub.list.length, suburb: true }, targetH: 0.5, depth: 0, district: true };
+  slab.userData = { item: { name: sub.list[0].name, size: sub.total, kind: sub.kind, isDir: false, virtual: true, files: sub.list.length, suburb: true }, targetH: 0.5, depth: 0, district: true };
   slab.receiveShadow = true;
   blocks.add(slab);
   meshes.push(slab);
@@ -645,13 +621,12 @@ function placeSuburb(r) {
     const built = meshes.length > before ? meshes[meshes.length - 1].userData.footprint : null;
     fillLot(lr, built);
   }
-  // Suburb sign at the front edge; building labels on the biggest items.
-  // Suburb signs are off (Angus found them distracting); names still show in the legend and menu.
+  // Name label on each category building.
   for (const lr of lotRects.slice(0, 3)) {
     if (lr.w * lr.h > 40) {
       // Use the height actually built (landmarks are capped), not the raw size.
       const bh = lr.builtH || heightFor(lr.item.item.size);
-      addLabel(lr.item.item, lr.x + lr.w / 2, 1.1 + bh + (bh > 30 ? bh * 0.55 : 2), lr.y + lr.h / 2, Math.min(lr.w + 6, 26));
+      addLabel(lr.item.item, lr.x + lr.w / 2, 1.1 + bh + (bh > 30 ? bh * 0.2 : 2), lr.y + lr.h / 2, Math.min(lr.w + 6, 26));
     }
   }
 }
@@ -726,7 +701,9 @@ function piece(geo, mat, x, y, z, sx, sy, sz, shadow = true) {
 }
 
 // Folders with a well-known role get a landmark instead of a generic tower.
+const CATEGORY_LANDMARK = { video: 'studio', photos: 'studio', music: 'music', trash: 'tip', system: 'factory', downloads: 'apartments', desktop: 'market', library: 'library' };
 function landmarkFor(item) {
+  if (item.category) return CATEGORY_LANDMARK[item.category] || null;
   const n = (item.name || '').toLowerCase();
   if (item.virtual && item.kind === 'system') return 'factory';
   if (!item.isDir) return null;
@@ -2570,23 +2547,10 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 renderer.domElement.addEventListener('pointerdown', (e) => (downAt = [e.clientX, e.clientY]));
 renderer.domElement.addEventListener('click', (e) => {
   if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4) return;
-  if (hovered && !hovered.userData.district) openMenu(hovered.userData.item, e.clientX, e.clientY);
-  else closeMenu();
+  const it = hovered && !hovered.userData.district ? hovered.userData.item : null;
+  if (it && it.category) openCategory(it.category);
+  else if (it && it.virtual) toast(`${it.name}: ${fmt(it.size)}`);
 });
-renderer.domElement.addEventListener('dblclick', () => {
-  closeMenu();
-  if (!hovered && state.path.length) {
-    state.path.pop();
-    layout();
-  }
-});
-
-function relativePath(item) {
-  // Find the folder by walking from the current node, one or two levels down.
-  const node = currentNode();
-  for (const c of node.children || []) if (c === item) return [...state.path, c.name];
-  return null;
-}
 
 function updateHover() {
   raycaster.setFromCamera(pointer, camera);
@@ -2605,9 +2569,9 @@ function updateHover() {
         hovered.material.color.offsetHSL(0, 0, 0.14);
       }
       const it = hovered.userData.item;
-      tooltip.innerHTML = `<b>${esc(it.name)}</b>${fmt(it.size)} · ${KIND_LABELS[it.kind] || it.kind}${it.files ? ` · ${it.files.toLocaleString()} files` : ''}${it.isDir ? ' · click to open' : ''}<div class="path">${esc(it.path || '')}</div>`;
+      tooltip.innerHTML = `<b>${esc(it.name)}</b>${fmt(it.size)} · ${KIND_LABELS[it.kind] || it.kind}${it.files ? ` · ${it.files.toLocaleString()} files` : ''}${it.category ? ' · click to see files' : ''}<div class="path">${esc(it.path || '')}</div>`;
       tooltip.hidden = false;
-      renderer.domElement.style.cursor = it.isDir ? 'pointer' : 'default';
+      renderer.domElement.style.cursor = it.category ? 'pointer' : 'default';
     } else {
       tooltip.hidden = true;
       renderer.domElement.style.cursor = 'default';
@@ -2615,80 +2579,27 @@ function updateHover() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Context menu at the cursor
-// ---------------------------------------------------------------------------
 const menu = document.getElementById('menu');
-let menuItem = null;
 function closeMenu() {
   menu.hidden = true;
-  menuItem = null;
 }
-function openMenu(item, x, y) {
-  menuItem = item;
-  const canDemolish = item.path && !item.aggregate && !item.virtual;
-  const color = '#' + (KIND_COLORS[item.kind] || KIND_COLORS.other).toString(16).padStart(6, '0');
-  const where = item.suburb ? 'Suburb' : SUBURB_NAMES[item.kind] || KIND_LABELS[item.kind] || item.kind;
-  const row = (act, icon, label, sub, cls = '') => `<button data-act="${act}" class="${cls}"><i>${icon}</i><span class="lbl">${label}<small>${sub}</small></span></button>`;
-  menu.innerHTML = `<div class="menu-head" style="--kind:${color}"><span class="swatch"></span><div><b>${esc(item.name)}</b><span>${fmt(item.size)}${item.files ? ` · ${item.files.toLocaleString()} files` : ''} · ${esc(where)}</span></div></div>` +
-    (item.isDir && !item.virtual ? row('open', '🚶', 'Walk in', 'see what is inside') : '') +
-    (state.path.length ? row('leave', '↩', `Leave ${esc(currentNode().name)}`, 'back out to the street') : '') +
-    (item.path && !item.virtual ? row('reveal', '📍', 'Show in Finder', 'open its folder') : '') +
-    (canDemolish ? row('demolish', '🧨', 'Demolish', 'moves it to the Trash', 'demolish') : '') +
-    (!canDemolish ? `<div class="menu-note">${item.suburb ? 'A suburb' : item.virtual ? 'Not a file' : 'Lots of small files'}: walk in to pick what to demolish.</div>` : '');
-  menu.hidden = false;
-  const mw = menu.offsetWidth;
-  const mh = menu.offsetHeight;
-  menu.style.left = Math.min(x + 8, window.innerWidth - mw - 8) + 'px';
-  menu.style.top = Math.min(y + 8, window.innerHeight - mh - 8) + 'px';
-  tooltip.hidden = true;
-}
-menu.addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-act]');
-  const act = btn && btn.dataset.act;
-  if (!act || !menuItem) return;
-  const item = menuItem;
-  if (act === 'open') {
-    const target = relativePath(item);
-    if (target) {
-      state.path = target;
-      layout();
-    }
-  } else if (act === 'leave') {
-    leaveBuilding();
-  } else if (act === 'reveal') {
-    api.reveal(item.path);
-    closeMenu();
-  } else if (act === 'demolish') {
-    menu.innerHTML = `<div class="menu-head" style="--kind:#e5484d"><span class="swatch"></span><div><b>Demolish ${esc(item.name)}?</b><span>${fmt(item.size)} goes to the Trash. You can restore it from there.</span></div></div><button data-act="confirm" class="confirm">🧨 Yes, demolish</button><button data-act="cancel" class="cancel">Keep it</button>`;
-  } else if (act === 'cancel') {
-    closeMenu();
-  } else if (act === 'confirm') {
-    closeMenu();
-    await demolish(item);
-  }
-});
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    if (!menu.hidden) closeMenu();
-    else leaveBuilding();
-  }
-  if (e.key === 'Backspace' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) leaveBuilding();
+  if (e.key === 'Escape' && state.open && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) openCategory(null);
 });
 
 async function demolish(item) {
-  const mesh = meshes.find((m) => m.userData.item === item);
+  const cat = state.city.find((c) => c.children.includes(item));
+  const mesh = cat && meshes.find((m) => m.userData.item === cat);
   const res = await api.trash([item.path]);
   if (pro.handleBlocked(res)) return;
   if (!res.every((r) => r.ok)) {
     toast('Could not move to Trash: ' + (res.find((r) => !r.ok) || {}).error);
     return;
   }
-  // Collapse animation, then update the tree locally (no rescan needed).
-  if (mesh) {
-    mesh.userData.targetH = 0.001;
+  // The category building shrinks, then the tree updates locally (no rescan needed).
+  if (mesh && cat.size > 0) {
     mesh.userData.build = null;
-    for (const pc of mesh.userData.pieces || []) blocks.remove(pc);
+    mesh.userData.targetH *= Math.max(0.05, 1 - item.size / cat.size);
   }
   await new Promise((r) => setTimeout(r, 450));
   removeFromTree(item);
@@ -2699,16 +2610,20 @@ async function demolish(item) {
 }
 
 function removeFromTree(item) {
-  let n = state.tree;
-  const chain = [n];
-  for (const name of state.path) {
-    n = (n.children || []).find((c) => c.name === name && c.isDir);
-    if (!n) return;
-    chain.push(n);
-  }
-  const idx = (n.children || []).indexOf(item);
-  if (idx < 0) return;
-  n.children.splice(idx, 1);
+  // Find the chain of folders from the root down to the item's parent.
+  const find = (n, chain) => {
+    const kids = n.children || [];
+    if (kids.includes(item)) return chain.concat(n);
+    for (const c of kids) {
+      const r = c.isDir && find(c, chain.concat(n));
+      if (r) return r;
+    }
+    return null;
+  };
+  const chain = find(state.tree, []);
+  if (!chain) return;
+  const n = chain[chain.length - 1];
+  n.children.splice(n.children.indexOf(item), 1);
   for (const anc of chain) {
     anc.size -= item.size;
     anc.files -= item.files || 0;
@@ -2817,42 +2732,84 @@ function renderDisk() {
 
 function renderCrumbs() {
   const el = $('crumbs');
-  el.innerHTML = '';
-  if (!state.tree) return;
-  const parts = [state.tree.name, ...state.path];
-  parts.forEach((name, i) => {
-    if (i) {
-      const sep = document.createElement('span');
-      sep.className = 'sep';
-      sep.textContent = ' › ';
-      el.appendChild(sep);
-    }
-    const a = document.createElement(i === parts.length - 1 ? 'span' : 'a');
-    a.textContent = name;
-    if (i === parts.length - 1) a.className = 'here';
-    else a.onclick = () => {
-      state.path = state.path.slice(0, i);
-      layout();
-    };
-    el.appendChild(a);
-  });
+  el.textContent = state.tree ? state.tree.name : '';
 }
 
-function renderTop(node) {
-  const ol = $('top-list');
-  ol.innerHTML = '';
-  for (const c of (node.children || []).slice(0, 12)) {
-    const li = document.createElement('li');
-    li.innerHTML = `<span class="dot" style="background:#${(KIND_COLORS[c.kind] || KIND_COLORS.other).toString(16).padStart(6, '0')}"></span><span class="name">${esc(c.name)}</span><span class="size">${fmt(c.size)}</span>`;
-    li.title = c.path || '';
-    li.onclick = () => {
-      if (c.isDir) {
-        state.path = [...state.path, c.name];
-        layout();
-      } else if (c.path && !c.aggregate) api.reveal(c.path);
-    };
-    ol.appendChild(li);
+// Files tab: the list of categories, or the files in the one you clicked.
+// Folders open in place (no walking inside buildings).
+const hexColor = (k) => '#' + (KIND_COLORS[k] || KIND_COLORS.other).toString(16).padStart(6, '0');
+function openCategory(id) {
+  state.open = id;
+  renderFiles();
+  if (!id) return;
+  setPanel(true);
+  showTab('files');
+}
+function renderFiles() {
+  const wrap = $('files');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  const cat = state.open && state.city.find((c) => c.category === state.open);
+  if (!cat) {
+    state.open = null;
+    $('files-head').innerHTML = `<span>Your city</span><span class="muted">${state.city.length} buildings</span>`;
+    const ul = document.createElement('ul');
+    ul.className = 'file-list';
+    for (const c of state.city) {
+      const li = document.createElement('li');
+      li.className = 'cat-row';
+      li.innerHTML = `<span class="dot" style="background:${hexColor(c.kind)}"></span><span class="name">${esc(c.name)}</span><span class="size">${fmt(c.size)}</span>`;
+      li.onclick = () => openCategory(c.category);
+      ul.appendChild(li);
+    }
+    wrap.appendChild(ul);
+    return;
   }
+  $('files-head').innerHTML = `<button class="link" id="files-back">‹ All</button><span class="cat-title"><span class="dot" style="background:${hexColor(cat.kind)}"></span>${esc(cat.name)}</span><span class="muted">${fmt(cat.size)}</span>`;
+  $('files-back').onclick = () => openCategory(null);
+  wrap.appendChild(fileList(cat.children, true));
+}
+function fileList(items, top) {
+  const ul = document.createElement('ul');
+  ul.className = 'file-list';
+  for (const it of items.slice(0, 200)) {
+    const li = document.createElement('li');
+    const canOpen = it.isDir && (it.children || []).length > 0;
+    const canDemolish = it.path && !it.aggregate && !it.virtual;
+    const sub = top && it.rel && it.rel !== it.name ? `<small>${esc(it.rel.slice(0, -it.name.length - 1))}</small>` : '';
+    li.innerHTML = `<div class="row"><span class="chev">${canOpen ? '›' : ''}</span><span class="icon">${it.isDir ? '📁' : it.aggregate ? '🗂' : '📄'}</span><span class="name" title="${esc(it.path || '')}">${esc(it.name)}${sub}</span><span class="size">${fmt(it.size)}</span>` +
+      (it.path && !it.virtual ? `<button class="mini" data-act="reveal" title="Show in Finder">📍</button>` : '') +
+      (canDemolish ? `<button class="mini" data-act="demolish" title="Demolish (move to Trash)">🧨</button>` : '') +
+      `</div>`;
+    const row = li.firstChild;
+    row.onclick = async (e) => {
+      const act = e.target.closest('[data-act]');
+      if (act && act.dataset.act === 'reveal') return api.reveal(it.path);
+      if (act && act.dataset.act === 'demolish') {
+        if (!act.classList.contains('armed')) {
+          act.classList.add('armed');
+          act.textContent = 'Demolish?';
+          setTimeout(() => {
+            act.classList.remove('armed');
+            act.textContent = '🧨';
+          }, 3000);
+          return;
+        }
+        return demolish(it);
+      }
+      if (!canOpen) return;
+      li.classList.toggle('open');
+      if (li.classList.contains('open') && !li.querySelector('ul')) li.appendChild(fileList(it.children, false));
+    };
+    ul.appendChild(li);
+  }
+  if (items.length > 200) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = `…and ${items.length - 200} more`;
+    ul.appendChild(li);
+  }
+  return ul;
 }
 
 const GROUPS = [
@@ -2951,12 +2908,6 @@ $('btn-trash').onclick = async () => {
   await runScan(state.tree ? state.tree.path : null);
 };
 
-function renderLegend() {
-  $('legend').innerHTML = Object.entries(KIND_LABELS)
-    .map(([k, l]) => `<span><span class="dot" style="background:#${KIND_COLORS[k].toString(16).padStart(6, '0')}"></span><b>${SUBURB_NAMES[k]}</b><small>${l}</small></span>`)
-    .join('');
-}
-
 // ---------------------------------------------------------------------------
 // Scanning
 // ---------------------------------------------------------------------------
@@ -3019,7 +2970,7 @@ async function runScan(root) {
     const { tree, suggestions } = await api.scan(root || undefined);
     state.tree = tree;
     state.suggestions = suggestions;
-    state.path = [];
+    state.open = null;
     state.disk = await api.diskInfo();
     renderDisk();
     renderClean();
@@ -3044,7 +2995,6 @@ $('btn-pick').onclick = async () => {
   else if (DEMO) toast('Demo mode: folder picker is only available in the desktop app');
 };
 
-$('btn-leave').onclick = leaveBuilding;
 $('btn-night').onclick = toggleNight;
 // Side panel: collapsed by default, remembered per browser.
 function setPanel(open) {
@@ -3060,13 +3010,14 @@ try {
 } catch {}
 setPanel(panelOpen);
 $('btn-panel').onclick = () => setPanel($('panel').classList.contains('collapsed'));
+function showTab(name) {
+  for (const t of $('tabs').children) t.classList.toggle('active', t.dataset.tab === name);
+  for (const page of document.querySelectorAll('.tab-page')) page.hidden = page.id !== 'tab-' + name;
+}
 $('tabs').addEventListener('click', (e) => {
   const tab = e.target.closest('.tab');
-  if (!tab) return;
-  for (const t of $('tabs').children) t.classList.toggle('active', t === tab);
-  for (const page of document.querySelectorAll('.tab-page')) page.hidden = page.id !== 'tab-' + tab.dataset.tab;
+  if (tab) showTab(tab.dataset.tab);
 });
-renderLegend();
 pro = initPro({ api, state, fmt, esc, toast, buildGroup, rerender: () => renderClean(), DEMO });
 seasons = initSeasons({
   THREE,
@@ -3092,4 +3043,4 @@ if (DEMO) {
 }
 
 // Exposed for automated UI checks.
-window.__storageSaver = { state, openMenu, layout, toggleNight, buildSite, setScanProgress, pro, seasons, camera, controls, blocks };
+window.__storageSaver = { state, openCategory, layout, toggleNight, buildSite, setScanProgress, pro, seasons, camera, controls, blocks };
