@@ -23,7 +23,7 @@
     "appId": "com.sommarfilms.storagesaver",
     "productName": "Storage Saver",
     "files": ["src/**/*", "package.json", "!src/renderer/vendor/*.map"],
-    "mac": { "category": "public.app-category.utilities", "target": ["dmg"], "icon": "build/icon.png", "artifactName": "${productName}-${version}-${arch}.${ext}" },
+    "mac": { "category": "public.app-category.utilities", "target": ["dmg"], "icon": "build/icon.png", "hardenedRuntime": true, "gatekeeperAssess": false, "notarize": true, "artifactName": "${productName}-${version}-${arch}.${ext}" },
     "win": { "target": ["nsis"] }
   }
 }
