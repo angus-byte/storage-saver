@@ -462,7 +462,7 @@ function decorate(b, w, h, d) {
     piece(boxGeo, trim, x, base, z, w + 0.16, Math.min(1.6, h * 0.12), d + 0.16);
     if (h > 6 && w > 2) {
       const doorW = Math.min(1.1, w * 0.3);
-      piece(boxGeo, darkMat, x, base, front + 0.02, doorW, 1.1, 0.12, false);
+      piece(boxGeo, darkMat, x, base + 0.02, front + 0.18, doorW, 1.1, 0.12, false); // proud of the podium so it never z-fights
       piece(boxGeo, awningMat, x, base + 1.15, front + 0.25, doorW + 0.5, 0.1, 0.55);
     }
   }
@@ -507,7 +507,7 @@ function decorate(b, w, h, d) {
       piece(cylGeo, poleMat, x - bw * 0.35, top, z + d * 0.3, 0.08, 1.2, 0.08, false);
       piece(cylGeo, poleMat, x + bw * 0.35, top, z + d * 0.3, 0.08, 1.2, 0.08, false);
       const bb = piece(boxGeo, new THREE.MeshStandardMaterial({ color: BILLBOARD_COLORS[Math.floor(Math.random() * BILLBOARD_COLORS.length)], emissive: 0x222222, roughness: 0.6 }), x, top + 1.1, z + d * 0.3, bw, 1.4, 0.12);
-      piece(boxGeo, whiteMat, x, top + 1.3, z + d * 0.3 + 0.07, bw * 0.7, 0.35, 0.02, false);
+      piece(boxGeo, whiteMat, x, top + 1.3, z + d * 0.3 + 0.09, bw * 0.7, 0.35, 0.02, false);
       bb.castShadow = true;
     }
   } else if (minSide > 1.5) {
