@@ -87,6 +87,7 @@ let nightK = 0; // 0 = full day, 1 = full night; eased towards the target each f
 const clock = new THREE.Clock();
 const NIGHT_SECONDS = 4.5;
 let labelPairs = [];
+let pickExtras = []; // roofs, spires, signs and labels that count as clicking their building
 
 // ---------------------------------------------------------------------------
 // Scene setup
@@ -477,6 +478,7 @@ function clearBlocks() {
   cars = [];
   people = [];
   labelPairs = [];
+  pickExtras = [];
   carMesh = cabMesh = headMesh = tailMesh = peopleBody = peopleHead = peopleHat = null;
   site = null;
   landmarkAnims = [];
@@ -796,6 +798,8 @@ function piece(geo, mat, x, y, z, sx, sy, sz, shadow = true) {
     m.userData.pop = 0;
     m.scale.set(0, 0, 0);
     activeBuilding.userData.pieces.push(m);
+    m.userData.owner = activeBuilding;
+    pickExtras.push(m);
   }
   m.castShadow = shadow;
   m.receiveShadow = true;
@@ -851,6 +855,10 @@ function textSign(text, x, y, z, w, h, bg = '#1d2230', fg = '#ffffff', opts = {}
   m.material.userData = { dayI: 0.15, nightI: 1.4, th: 0.5 };
   m.position.set(x, y, z);
   if (opts.rotY) m.rotation.y = opts.rotY;
+  if (activeBuilding) {
+    m.userData.owner = activeBuilding;
+    pickExtras.push(m);
+  }
   blocks.add(m);
   extras.push(m);
   return m;
@@ -875,6 +883,10 @@ beamGeo.translate(0, 0.5, 0);
 function addGroup(x, y, z) {
   const g = new THREE.Group();
   g.position.set(x, y, z);
+  if (activeBuilding) {
+    g.userData.owner = activeBuilding;
+    pickExtras.push(g);
+  }
   blocks.add(g);
   extras.push(g);
   return g;
@@ -2619,6 +2631,8 @@ function addLabel(item, x, y, z, width, sign = false) {
     sprite.material.opacity = nightStyle ? nightK : 1 - nightK;
     blocks.add(sprite);
     extras.push(sprite);
+    sprite.userData.labelItem = item;
+    pickExtras.push(sprite);
     pair[nightStyle ? 'night' : 'day'] = sprite;
   }
   labelPairs.push(pair);
@@ -2660,8 +2674,18 @@ renderer.domElement.addEventListener('click', (e) => {
 
 function updateHover() {
   raycaster.setFromCamera(pointer, camera);
-  const hits = raycaster.intersectObjects(meshes, false);
-  const hit = hits.length ? hits[0].object : null;
+  const hits = raycaster.intersectObjects([...meshes, ...pickExtras], true);
+  let hit = null;
+  for (const h of hits) {
+    let o = h.object;
+    if (o.isSprite && !o.material.opacity) continue; // the hidden day/night twin of a label
+    while (o && !o.userData.owner && !o.userData.labelItem && !meshes.includes(o)) o = o.parent;
+    if (!o) continue;
+    if (o.userData.owner) hit = o.userData.owner;
+    else if (o.userData.labelItem) hit = meshes.find((m) => !m.userData.district && m.userData.item === o.userData.labelItem) || null;
+    else hit = o;
+    if (hit) break;
+  }
   if (hit !== hovered) {
     // Highlight by lightening the facade colour; emissive is reserved for lit windows.
     if (hovered && hovered.userData.hoverColor) {
