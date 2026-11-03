@@ -375,51 +375,144 @@ function makeNightWindowTexture(seed, style = Math.floor(Math.random() * 7), pal
 }
 
 
-function makeWindowTexture(seed) {
-  const c = document.createElement('canvas');
-  c.width = 128;
-  c.height = 128;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, 128, 128);
-  // Floor bands.
-  ctx.fillStyle = 'rgba(0,0,0,0.10)';
-  for (let y = 0; y < 128; y += 16) ctx.fillRect(0, y + 13, 128, 3);
-  // Windows with frames.
-  let r = seed;
-  const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
-  for (let y = 0; y < 8; y++) {
-    for (let x = 0; x < 8; x++) {
-      const px = x * 16 + 3;
-      const py = y * 16 + 2;
-      ctx.fillStyle = 'rgba(0,0,0,0.22)';
-      ctx.fillRect(px - 1, py - 1, 12, 11);
-      const v = rnd();
-      ctx.fillStyle = v < 0.18 ? 'rgba(255,236,190,0.75)' : v < 0.3 ? 'rgba(140,190,215,0.55)' : 'rgba(45,62,88,0.6)';
-      ctx.fillRect(px, py, 10, 9);
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      ctx.fillRect(px, py, 10, 2);
-    }
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  return t;
-}
-const windowTextures = [1, 2, 3, 4].map(makeWindowTexture);
 
-function facadeMaterial(kind, w, h, d, variant = 0) {
-  const tex = windowTextures[variant % windowTextures.length].clone();
-  tex.needsUpdate = true;
-  tex.repeat.set(Math.max(1, Math.round(Math.max(w, d) / 2.6)), Math.max(1, Math.round(h / 2.6)));
+// Facade textures per building style, drawn on a 256px canvas. Windows sit in
+// the same 8x8 grid as the night window map (cells of 32px, glass at
+// x 6..26, y 4..22) so lit windows line up after dark. Each texture also
+// gets a bump map (same drawing in greys) so mortar, frames and sills read
+// as relief in the hard sun.
+const FACADE_KINDS = ['office', 'brick', 'stone', 'glass', 'concrete'];
+function makeFacade(kind, seed) {
+  const S = 256;
+  const C = 32;
+  const col = document.createElement('canvas');
+  const bmp = document.createElement('canvas');
+  col.width = col.height = bmp.width = bmp.height = S;
+  const c = col.getContext('2d');
+  const k = bmp.getContext('2d');
+  let r = seed * 13 + 7;
+  const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
+  const both = (fillC, fillB, x, y, w, h) => {
+    if (fillC) {
+      c.fillStyle = fillC;
+      c.fillRect(x, y, w, h);
+    }
+    if (fillB) {
+      k.fillStyle = fillB;
+      k.fillRect(x, y, w, h);
+    }
+  };
+  const glassFill = () => {
+    const v = rnd();
+    return v < 0.14 ? 'rgba(255,232,180,0.85)' : v < 0.32 ? 'rgba(150,200,225,0.75)' : 'rgba(42,58,84,0.8)';
+  };
+  // Window with frame, sill and a sky glint at the top.
+  const win = (x, y, w, h, frame = 'rgba(30,30,36,0.55)', sill = true) => {
+    both(frame, '#303030', x - 1.5, y - 1.5, w + 3, h + 3);
+    both(glassFill(), '#1a1a1a', x, y, w, h);
+    c.fillStyle = 'rgba(255,255,255,0.28)';
+    c.fillRect(x, y, w, 2.5);
+    c.fillStyle = 'rgba(255,255,255,0.08)';
+    c.beginPath();
+    c.moveTo(x, y + h);
+    c.lineTo(x + w * 0.45, y);
+    c.lineTo(x + w * 0.65, y);
+    c.lineTo(x + w * 0.2, y + h);
+    c.fill();
+    if (sill) both('rgba(255,255,255,0.45)', '#e6e6e6', x - 2.5, y + h + 1.5, w + 5, 2.5);
+  };
+  if (kind === 'brick') {
+    both('#ffffff', '#9a9a9a', 0, 0, S, S);
+    for (let y = 0; y < S; y += 4) {
+      const off = (y / 4) % 2 ? 4 : 0;
+      for (let x = -8; x < S; x += 8) {
+        const t = 0.82 + rnd() * 0.3;
+        both(`rgba(${Math.round(255 * t)},${Math.round(236 * t)},${Math.round(226 * t)},1)`, '#b4b4b4', x + off, y, 7, 3);
+      }
+    }
+    for (let y = 0; y < 8; y++)
+      for (let x = 0; x < 8; x++) {
+        both('rgba(255,255,255,0.6)', '#d0d0d0', x * C + 5, y * C + 2, 22, 3); // lintel
+        win(x * C + 6, y * C + 5, 20, 17, 'rgba(250,250,245,0.9)');
+        both('rgba(0,0,0,0.18)', null, x * C + 15.5, y * C + 5, 1.5, 17); // sash bar
+      }
+  } else if (kind === 'stone') {
+    both('#f4f1ea', '#a8a8a8', 0, 0, S, S);
+    for (let y = 0; y < S; y += 8) both('rgba(0,0,0,0.07)', '#8c8c8c', 0, y, S, 1);
+    for (let y = 0; y < S; y += 8) for (let x = ((y / 8) % 2) * 12; x < S; x += 24) both('rgba(0,0,0,0.06)', '#8c8c8c', x, y, 1, 8);
+    for (let x = 0; x < 8; x++) both('rgba(255,255,255,0.35)', '#d8d8d8', x * C, 0, 4, S); // pilasters
+    for (let y = 0; y < 8; y++) {
+      both('rgba(0,0,0,0.12)', '#cfcfcf', 0, y * C + 27, S, 3); // string course
+      for (let x = 0; x < 8; x++) win(x * C + 8, y * C + 4, 16, 19, 'rgba(60,52,40,0.55)');
+    }
+  } else if (kind === 'glass') {
+    both('#9fb8c8', '#202020', 0, 0, S, S);
+    const g = c.createLinearGradient(0, 0, S, S);
+    g.addColorStop(0, 'rgba(255,255,255,0.35)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0)');
+    g.addColorStop(1, 'rgba(255,255,255,0.18)');
+    for (let y = 0; y < 8; y++)
+      for (let x = 0; x < 8; x++) {
+        const v = rnd();
+        c.fillStyle = v < 0.12 ? 'rgba(255,236,190,0.55)' : v < 0.5 ? 'rgba(70,104,132,0.7)' : 'rgba(40,64,92,0.75)';
+        c.fillRect(x * C + 2, y * C + 2, C - 4, C - 4);
+      }
+    c.fillStyle = g;
+    c.fillRect(0, 0, S, S);
+    for (let i = 0; i <= S; i += C) {
+      both('rgba(225,232,238,0.95)', '#d0d0d0', i - 2, 0, 4, S); // mullions
+      both('rgba(225,232,238,0.95)', '#d0d0d0', 0, i - 2, S, 4); // transoms
+    }
+    for (let i = C / 2; i < S; i += C) both('rgba(225,232,238,0.5)', '#909090', i - 0.5, 0, 1, S);
+  } else if (kind === 'concrete') {
+    both('#f0efec', '#b0b0b0', 0, 0, S, S);
+    for (let i = 0; i < 900; i++) both(`rgba(0,0,0,${0.03 + rnd() * 0.05})`, null, rnd() * S, rnd() * S, 2, 2);
+    for (let y = 0; y < 8; y++) {
+      // Ribbon window per floor with thin frames, a deep spandrel beneath.
+      both('rgba(30,34,44,0.6)', '#2a2a2a', 0, y * C + 3, S, 21);
+      for (let x = 0; x < 8; x++) {
+        both(glassFill(), '#1a1a1a', x * C + 1, y * C + 4, C - 2, 19);
+        c.fillStyle = 'rgba(255,255,255,0.22)';
+        c.fillRect(x * C + 1, y * C + 4, C - 2, 2);
+      }
+      both('rgba(255,255,255,0.55)', '#ececec', 0, y * C + 24, S, 2); // slab edge
+      both('rgba(0,0,0,0.08)', null, 0, y * C + 26, S, 6);
+    }
+  } else {
+    // Office: spandrel bands, framed windows, column lines.
+    both('#ffffff', '#b8b8b8', 0, 0, S, S);
+    for (let y = 0; y < 8; y++) both('rgba(0,0,0,0.09)', '#a0a0a0', 0, y * C + 25, S, 7);
+    for (let x = 0; x < 8; x++) both('rgba(0,0,0,0.05)', '#c8c8c8', x * C + 29, 0, 3, S);
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) win(x * C + 6, y * C + 4, 20, 18, 'rgba(0,0,0,0.3)', false);
+  }
+  const tex = new THREE.CanvasTexture(col);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  const bump = new THREE.CanvasTexture(bmp);
+  bump.wrapS = bump.wrapT = THREE.RepeatWrapping;
+  return { tex, bump };
+}
+const facadeTex = {};
+for (const kind of FACADE_KINDS) facadeTex[kind] = [1, 2, 3].map((sd) => makeFacade(kind, sd));
+const STYLE_FACADE = { brick: 'brick', deco: 'stone', chrysler: 'stone', civic: 'stone', stepped: 'brick', glass: 'glass', twin: 'glass', modern: 'concrete', shop: 'brick', default: 'office' };
+
+function facadeMaterial(kind, w, h, d, variant = 0, style = null) {
+  const fk = STYLE_FACADE[style] || (variant % 2 ? 'concrete' : 'office');
+  const set = facadeTex[fk][variant % 3];
+  const tex = set.tex.clone();
+  const bump = set.bump.clone();
+  tex.needsUpdate = bump.needsUpdate = true;
+  // One tile = 8 x 8 windows, about 1.2 units per storey (people are ~0.6 tall).
+  tex.repeat.set(Math.max(0.5, Math.round((Math.max(w, d) / 9.6) * 2) / 2), Math.max(0.5, Math.round((h / 9.6) * 2) / 2));
+  bump.repeat.copy(tex.repeat);
   const color = new THREE.Color(KIND_COLORS[kind] || KIND_COLORS.other);
   const hsl = {};
   color.getHSL(hsl);
   color.setHSL(hsl.h + (Math.random() - 0.5) * 0.03, hsl.s, Math.min(0.9, hsl.l + (Math.random() - 0.5) * 0.12));
   const em = makeNightWindowTexture(Math.floor(Math.random() * 1e6));
   em.repeat.copy(tex.repeat);
-  const mat = new THREE.MeshStandardMaterial({ color, map: tex, roughness: 0.7, metalness: 0.05, emissive: 0xffffff, emissiveMap: em, emissiveIntensity: night ? 0.9 : 0 });
+  const mat = new THREE.MeshStandardMaterial({ color, map: tex, bumpMap: bump, bumpScale: fk === 'glass' ? 0.6 : 1.4, roughness: fk === 'glass' ? 0.25 : 0.78, metalness: fk === 'glass' ? 0.35 : 0.04, emissive: 0xffffff, emissiveMap: em, emissiveIntensity: night ? 0.9 : 0 });
   mat.userData.dayI = 0;
   mat.userData.nightI = 0.9;
   mat.userData.th = 0.35 + Math.random() * 0.6;
@@ -752,8 +845,8 @@ function placeBuilding(r, depth, gap) {
   if (landmark === 'library') h = Math.min(h, 17);
   if (LANDMARK_MAX_H[landmark]) h = Math.min(h, LANDMARK_MAX_H[landmark]);
   const plain = { library: 0xe9e2d0, tip: 0x7a6a58, studio: 0xd8cfbe, market: 0xd8d2c6 };
-  const mat = plain[landmark] ? new THREE.MeshStandardMaterial({ color: plain[landmark], roughness: 0.9 }) : facadeMaterial(item.kind, w, h, d, Math.floor(Math.random() * 4));
   const style = landmark && landmark !== 'music' ? null : styleFor(item, h, Math.min(w, d));
+  const mat = plain[landmark] ? new THREE.MeshStandardMaterial({ color: plain[landmark], roughness: 0.9 }) : facadeMaterial(item.kind, w, h, d, Math.floor(Math.random() * 6), style);
   if (style) applyStyleTint(mat, style);
   const b = new THREE.Mesh(boxGeo, mat);
   b.position.set(r.x + r.w / 2, 1.1, r.y + r.h / 2);
@@ -778,6 +871,7 @@ function placeBuilding(r, depth, gap) {
   else if (landmark === 'market') decorateMarket(b, w, h, d);
   else if (style && style !== 'default') decorateStyled(b, w, h, d, style);
   else decorate(b, w, h, d);
+  if (!landmark || landmark === 'music') facadeDetail(b, w, d, style || 'default');
   if (landmark === 'music' && w > 1.8) guitarSign(b, w, h, d);
   activeBuilding = null;
   b.userData.footprint = { x: b.position.x, z: b.position.z, w, d };
@@ -1423,6 +1517,76 @@ function decorateStyled(b, w, h, d, style) {
     roof.castShadow = true;
     piece(boxGeo, brickMat, x + w * 0.3, top, z - d * 0.2, 0.4, Math.min(2.4, minSide * 0.6) + 0.5, 0.4, false);
     if (w > 2) piece(boxGeo, awningMat, x, base + 1.15, front + 0.25, Math.min(w * 0.8, 3), 0.1, 0.6);
+  }
+}
+
+// Shared facade detail on top of each style: shopfronts with awnings at
+// street level, corner quoins and floor ledges on masonry, fins on glass,
+// balconies on concrete. Front (+z) and right (+x) faces are the ones the
+// camera sees, so the detail goes there.
+const shopGlassMat = new THREE.MeshStandardMaterial({ color: 0x2c4a5e, roughness: 0.1, metalness: 0.7 });
+const frameMat = new THREE.MeshStandardMaterial({ color: 0x2d3038, roughness: 0.6, metalness: 0.3 });
+const railMat = new THREE.MeshStandardMaterial({ color: 0xbfe3f0, roughness: 0.1, metalness: 0.5, transparent: true, opacity: 0.55 });
+const awningMats = awningStripesMats();
+function awningStripesMats() {
+  return [0xd94f4f, 0x2b6cb0, 0x35a06b, 0xf2b134, 0x7b4fd9].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 }));
+}
+function facadeDetail(b, w, d, style) {
+  const x = b.position.x;
+  const z = b.position.z;
+  const base = 1.1;
+  const shaft = b.userData.targetH;
+  const minSide = Math.min(w, d);
+  if (minSide < 1.6 || shaft < 4) return;
+  const trim = trimMaterial(b.material);
+  const fk = STYLE_FACADE[style] || 'office';
+  const faces = [
+    { nx: 0, nz: 1, len: w, at: z + d / 2, along: (t) => [x + t, null] }, // front
+    { nx: 1, nz: 0, len: d, at: x + w / 2, along: (t) => [null, z + t] }, // right
+  ];
+  const put = (f, geo, mat, t, y, out, sAlong, sy, sOut, shadow = false) => {
+    if (f.nz) piece(geo, mat, x + t, y, f.at + out, sAlong, sy, sOut, shadow);
+    else piece(geo, mat, f.at + out, y, z + t, sOut, sy, sAlong, shadow);
+  };
+  // Street level: shop windows, mullions and a striped awning per bay.
+  const shopH = Math.min(1.5, shaft * 0.14);
+  for (const f of faces) {
+    const bays = Math.max(1, Math.floor(f.len / 1.8));
+    const bw = f.len / bays;
+    for (let i = 0; i < bays; i++) {
+      const t = -f.len / 2 + bw * (i + 0.5);
+      if (f.nz && bays > 1 && i === Math.floor(bays / 2)) continue; // the entrance bay
+      put(f, boxGeo, shopGlassMat, t, base + 0.15, 0.07, bw * 0.78, shopH * 0.8, 0.06);
+      put(f, boxGeo, frameMat, t, base + 0.15 + shopH * 0.8, 0.09, bw * 0.84, 0.08, 0.08);
+      if (Math.random() < 0.7) put(f, boxGeo, awningMats[Math.floor(Math.random() * awningMats.length)], t, base + shopH * 0.95, 0.32, bw * 0.8, 0.07, 0.55, true);
+    }
+  }
+  if (fk === 'brick' || fk === 'stone' || fk === 'office') {
+    // Corner quoins / pilasters, full height.
+    for (const [cx, cz] of [[1, 1], [1, -1], [-1, 1]]) piece(boxGeo, trim, x + cx * (w / 2 + 0.02), base, z + cz * (d / 2 + 0.02), 0.32, shaft, 0.32);
+    // Floor ledges every few storeys.
+    const step = fk === 'office' ? 7.8 : 5.2;
+    for (let y = base + shopH + 0.2; y < base + shaft - 1.5; y += step) {
+      for (const f of faces) put(f, boxGeo, trim, 0, y, 0.05, f.len + 0.12, 0.16, 0.14);
+    }
+  } else if (fk === 'glass') {
+    // Vertical aluminium fins catch the sun.
+    for (const f of faces) {
+      const n = Math.max(2, Math.floor(f.len / 1.25));
+      for (let i = 1; i < n; i++) put(f, boxGeo, spireMat, -f.len / 2 + (i * f.len) / n, base + shopH, 0.08, 0.07, shaft - shopH, 0.16);
+    }
+  } else if (fk === 'concrete') {
+    // Balconies with glass rails on some floors.
+    const f = faces[0];
+    const cols = Math.max(1, Math.floor(f.len / 2.2));
+    for (let y = base + shopH + 2.6; y < base + shaft - 1.5; y += 2.6) {
+      for (let i = 0; i < cols; i++) {
+        if (Math.random() < 0.35) continue;
+        const t = -f.len / 2 + (f.len / cols) * (i + 0.5);
+        put(f, boxGeo, whiteMat, t, y, 0.35, 1.3, 0.1, 0.7, true);
+        put(f, boxGeo, railMat, t, y + 0.1, 0.68, 1.3, 0.45, 0.04);
+      }
+    }
   }
 }
 
@@ -2667,7 +2831,7 @@ renderer.domElement.addEventListener('pointerdown', (e) => (downAt = [e.clientX,
 renderer.domElement.addEventListener('click', (e) => {
   if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4) return;
   const it = hovered && !hovered.userData.district ? hovered.userData.item : null;
-  if (it && it.category) openCategory(it.category);
+  if (it && it.category) openCategory(state.open === it.category ? null : it.category); // click again to deselect
   else if (it && it.virtual) toast(`${it.name}: ${fmt(it.size)}`);
   else if (state.open) openCategory(null);
 });
