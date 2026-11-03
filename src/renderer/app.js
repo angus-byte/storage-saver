@@ -3,6 +3,7 @@ import { OrbitControls } from './vendor/OrbitControls.js';
 import { squarify } from './treemap.js';
 import { mockTree, mockSuggestions, mockDisk } from './mock.js';
 import { initPro, demoPlanApi, mockDeep } from './pro.js';
+import { initSeasons } from './seasons.js';
 
 // ---------------------------------------------------------------------------
 // Backend: Electron bridge or in-browser demo
@@ -75,6 +76,7 @@ const MAX_H = 46;
 // ---------------------------------------------------------------------------
 const state = { disk: null, tree: null, suggestions: null, deep: null, path: [], selected: new Map(), scanning: false };
 let pro = null; // free / Pro plan UI, see pro.js
+let seasons = null; // Pro autumn / winter, see seasons.js
 let night = false; // target state
 let nightK = 0; // 0 = full day, 1 = full night; eased towards the target each frame
 const clock = new THREE.Clock();
@@ -536,6 +538,7 @@ function applyNight() {
     lp.night.material.opacity = k;
   }
   clouds.children.forEach((c) => c.children.forEach((s) => (s.material.opacity = 0.5 + (0.22 - 0.5) * k)));
+  if (seasons) seasons.tintLights({ fog: scene.fog, hemi, key, nightK: k });
 }
 function toggleNight() {
   night = !night;
@@ -1035,12 +1038,16 @@ function placeTrees() {
       pines.setMatrixAt(i, hidden);
     }
   }
+  lower.userData.tree = 'lower';
+  upper.userData.tree = 'upper';
+  pines.userData.tree = 'pine';
   for (const im of [trunks, lower, upper, pines]) {
     im.castShadow = true;
     im.receiveShadow = true;
     blocks.add(im);
     extras.push(im);
   }
+  if (seasons) seasons.refresh();
 }
 
 // ---------------------------------------------------------------------------
@@ -2124,6 +2131,7 @@ function animate() {
   updateLife(dt, t);
   if (site) updateSite(dt, t);
   stepNight(dt);
+  if (seasons) seasons.step(dt, t);
   if (nightK >= 1) stars.material.opacity = 0.78 + 0.2 * Math.sin(t * 2.3);
   for (const c of clouds.children) {
     c.position.x += c.userData.speed * dt * 1.8;
@@ -2457,6 +2465,19 @@ $('tabs').addEventListener('click', (e) => {
 });
 renderLegend();
 pro = initPro({ api, state, fmt, esc, toast, buildGroup, rerender: () => renderClean(), DEMO });
+seasons = initSeasons({
+  THREE,
+  scene,
+  blocks,
+  mats: { park: parkMat, pavement: pavementMat, roof: roofMat, kerb: kerb.material, plinth: plinth.material, cloud: clouds.children[0].children[0].material },
+  isPro: () => pro.isPro(),
+  planKnown: () => !!pro.status(),
+  showUpgrade: (why) => pro.showUpgrade(why),
+  getMeshes: () => meshes,
+  getExtras: () => extras,
+  getTreeSpots: () => treeSpots,
+  applyNight,
+});
 api.diskInfo().then((d) => {
   state.disk = d;
   renderDisk();
@@ -2467,4 +2488,4 @@ if (DEMO) {
 }
 
 // Exposed for automated UI checks.
-window.__storageSaver = { state, openMenu, layout, toggleNight, buildSite, setScanProgress, pro };
+window.__storageSaver = { state, openMenu, layout, toggleNight, buildSite, setScanProgress, pro, seasons };
