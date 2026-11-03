@@ -86,7 +86,9 @@ let labelPairs = [];
 // Scene setup
 // ---------------------------------------------------------------------------
 const container = document.getElementById('scene');
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+// Logarithmic depth keeps far-away facades from z-fighting (flicker) when the
+// whole city is in view.
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance', logarithmicDepthBuffer: true });
 renderer.setClearColor(0x000000, 0); // the CSS gradient behind the canvas is the sky
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -101,7 +103,7 @@ const scene = new THREE.Scene();
 scene.background = null;
 scene.fog = new THREE.Fog(0x4fbdbb, 320, 700);
 
-const camera = new THREE.PerspectiveCamera(32, window.innerWidth / window.innerHeight, 0.5, 2000);
+const camera = new THREE.PerspectiveCamera(32, window.innerWidth / window.innerHeight, 1, 1500);
 camera.position.set(165, 150, 185);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -619,7 +621,6 @@ function placeSuburb(r) {
   if (park) {
     const keepOut = buildPark(x0, z0, w, d);
     scatterTrees(x0 + SIDEWALK, z0 + SIDEWALK, w - SIDEWALK * 2, d - SIDEWALK * 2, Math.min(70, Math.floor((w * d) / 16)), keepOut);
-    addLabel({ name: SUBURB_NAMES.free, size: sub.total }, x0 + w / 2, 3, z0 + d / 2, w, true);
     return;
   }
   if (w > 14) busStop(x0 + w * 0.3, z0 + d - 0.9);
@@ -640,7 +641,7 @@ function placeSuburb(r) {
     fillLot(lr, built);
   }
   // Suburb sign at the front edge; building labels on the biggest items.
-  if (w * d > 90) addLabel({ name: SUBURB_NAMES[sub.kind] || sub.kind, size: sub.total }, x0 + w / 2, 1.2, z0 + d - 1, Math.min(w, 30), true);
+  // Suburb signs are off (Angus found them distracting); names still show in the legend and menu.
   for (const lr of lotRects.slice(0, 3)) {
     if (lr.w * lr.h > 40) {
       // Use the height actually built (landmarks are capped), not the raw size.
@@ -1409,7 +1410,7 @@ function decorate(b, w, h, d) {
 // no block is a blank slab (parking, cafés, kiosks, gardens, playgrounds…).
 // ---------------------------------------------------------------------------
 const CELL = 3.0;
-const PROP_COLORS = [0xff6b6b, 0xffd166, 0x4cc9f0, 0xf72585, 0x90be6d, 0xff9f1c];
+const PROP_COLORS = [0xff6b6b, 0xffd166, 0x4cc9f0, 0x4361ee, 0x90be6d, 0xff9f1c];
 const propMats = {};
 function propMat(hex) {
   if (!propMats[hex]) propMats[hex] = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.85 });
@@ -1511,11 +1512,11 @@ function placeProp(x, z, theme, alt) {
         piece(boxGeo, propMat(0xff6b6b), x + dx, y + 0.45, z, 0.35, 0.05, 0.2, false);
       }
     }
-  } else if (theme < 0.82) {
-    // Market stall.
+  } else if (theme < 0.76) {
+    // Market stall (kept rare).
     piece(boxGeo, benchMat, x, y, z, 1.6, 0.7, 0.9, false);
     for (const [dx, dz] of [[-0.75, -0.4], [0.75, -0.4], [-0.75, 0.4], [0.75, 0.4]]) piece(cylGeo, poleMat, x + dx, y, z + dz, 0.05, 1.7, 0.05, false);
-    piece(boxGeo, propMat(alt ? 0xf72585 : 0x90be6d), x, y + 1.7, z, 1.9, 0.08, 1.2);
+    piece(boxGeo, propMat(alt ? 0x4cc9f0 : 0x90be6d), x, y + 1.7, z, 1.9, 0.08, 1.2);
     for (let k = 0; k < 3; k++) piece(boxGeo, propMat(PROP_COLORS[(k + (alt ? 2 : 0)) % PROP_COLORS.length]), x - 0.5 + k * 0.5, y + 0.7, z, 0.35, 0.2, 0.5, false);
   } else if (theme < 0.9) {
     // Hedge row with a tree.
