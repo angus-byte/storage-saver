@@ -302,7 +302,12 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
         const btn = card.querySelector('#pro-activate');
         btn.disabled = true;
         btn.textContent = 'Checking…';
-        const r = await api.activateLicence(card.querySelector('#pro-key').value);
+        let r;
+        try {
+          r = await api.activateLicence(card.querySelector('#pro-key').value);
+        } catch (err) {
+          r = { ok: false, error: 'Something went wrong checking the key: ' + (err && err.message ? err.message : err) };
+        }
         btn.disabled = false;
         btn.textContent = 'Activate';
         if (!r.ok) {
