@@ -448,6 +448,7 @@ function clearBlocks() {
   labelPairs = [];
   carMesh = cabMesh = headMesh = tailMesh = peopleBody = peopleHead = peopleHat = null;
   site = null;
+  landmarkAnims = [];
   // Drop night-only objects that belonged to the old layout.
   for (let i = nightOnly.length - 1; i >= 0; i--) if (nightOnly[i].parent === blocks || !nightOnly[i].parent) nightOnly.splice(i, 1);
 }
@@ -657,8 +658,10 @@ function placeBuilding(r, depth, gap) {
   let h = heightFor(item.size);
   const landmark = landmarkFor(item);
   if (landmark === 'library') h = Math.min(h, 9);
-  const mat = landmark ? new THREE.MeshStandardMaterial({ color: 0xe9e2d0, roughness: 0.85 }) : facadeMaterial(item.kind, w, h, d, Math.floor(Math.random() * 4));
-  const style = landmark ? null : styleFor(item, h, Math.min(w, d));
+  if (LANDMARK_MAX_H[landmark]) h = Math.min(h, LANDMARK_MAX_H[landmark]);
+  const plain = { library: 0xe9e2d0, tip: 0x7a6a58, studio: 0xd8cfbe, market: 0xd8d2c6 };
+  const mat = plain[landmark] ? new THREE.MeshStandardMaterial({ color: plain[landmark], roughness: 0.9 }) : facadeMaterial(item.kind, w, h, d, Math.floor(Math.random() * 4));
+  const style = landmark && landmark !== 'music' ? null : styleFor(item, h, Math.min(w, d));
   if (style) applyStyleTint(mat, style);
   const b = new THREE.Mesh(boxGeo, mat);
   b.position.set(r.x + r.w / 2, 1.1, r.y + r.h / 2);
@@ -676,8 +679,14 @@ function placeBuilding(r, depth, gap) {
   meshes.push(b);
   activeBuilding = b;
   if (landmark === 'library') decorateLibrary(b, w, h, d, heightFor(item.size));
+  else if (landmark === 'tip') decorateTip(b, w, h, d);
+  else if (landmark === 'studio') decorateStudio(b, w, h, d, item);
+  else if (landmark === 'factory') decorateFactory(b, w, h, d);
+  else if (landmark === 'apartments') decorateApartments(b, w, h, d);
+  else if (landmark === 'market') decorateMarket(b, w, h, d);
   else if (style && style !== 'default') decorateStyled(b, w, h, d, style);
   else decorate(b, w, h, d);
+  if (landmark === 'music' && w > 1.8) guitarSign(b, w, h, d);
   activeBuilding = null;
   b.userData.footprint = { x: b.position.x, z: b.position.z, w, d };
   return h;
@@ -707,10 +716,401 @@ function piece(geo, mat, x, y, z, sx, sy, sz, shadow = true) {
 
 // Folders with a well-known role get a landmark instead of a generic tower.
 function landmarkFor(item) {
+  const n = (item.name || '').toLowerCase();
+  if (item.virtual && item.kind === 'system') return 'factory';
   if (!item.isDir) return null;
-  const n = item.name.toLowerCase();
   if (n === 'library') return 'library';
+  if (n === 'music') return 'music';
+  if (n === 'trash' || n === '.trash' || n === 'bin' || n === '$recycle.bin') return 'tip';
+  if (n === 'movies' || n === 'pictures' || n === 'videos' || n === 'photos' || n === 'video' || n === 'films') return 'studio';
+  if (n === 'system' || n === 'windows') return 'factory';
+  if (n === 'downloads') return 'apartments';
+  if (n === 'desktop') return 'market';
   return null;
+}
+const LANDMARK_MAX_H = { tip: 3.5, market: 2.6, studio: 13, factory: 12 };
+
+// Painted sign: text on a plane, facing +z. Added straight to the scene (no
+// build pop) so the texture never gets squashed.
+function textSign(text, x, y, z, w, h, bg = '#1d2230', fg = '#ffffff', opts = {}) {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, 512, 128);
+  if (opts.border) {
+    ctx.strokeStyle = opts.border;
+    ctx.lineWidth = 10;
+    ctx.strokeRect(5, 5, 502, 118);
+  }
+  ctx.fillStyle = fg;
+  let size = opts.size || 72;
+  do {
+    ctx.font = `bold ${size}px Impact, "Arial Black", -apple-system, system-ui, sans-serif`;
+    size -= 4;
+  } while (ctx.measureText(text).width > 470 && size > 20);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 256, 68);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.15, roughness: 0.6, side: THREE.DoubleSide }));
+  m.material.userData = { dayI: 0.15, nightI: 1.4, th: 0.5 };
+  m.position.set(x, y, z);
+  if (opts.rotY) m.rotation.y = opts.rotY;
+  blocks.add(m);
+  extras.push(m);
+  return m;
+}
+
+// Animated landmark props (trucks, gulls, searchlights, smoke) live here and
+// are stepped from updateLife.
+let landmarkAnims = [];
+const truckGreen = new THREE.MeshStandardMaterial({ color: 0x3f8f4f, roughness: 0.6 });
+const rubbishMat = new THREE.MeshStandardMaterial({ color: 0x5a5247, roughness: 1 });
+const hangarMat = new THREE.MeshStandardMaterial({ color: 0xd8cfbe, roughness: 0.9 });
+const hangarRoofMat = new THREE.MeshStandardMaterial({ color: 0x8e8a84, roughness: 0.7 });
+const factoryMat = new THREE.MeshStandardMaterial({ color: 0x9a6a56, roughness: 0.9 });
+const stackMat = new THREE.MeshStandardMaterial({ color: 0x6b6f76, roughness: 0.8 });
+const gullMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
+const smokeMat = new THREE.SpriteMaterial({ map: glowTex, color: 0xd8dbe0, transparent: true, opacity: 0.35, depthWrite: false });
+const beamMat2 = new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+const awningStripes = [0xd94f4f, 0x2b6cb0, 0xf6c90e, 0x35c77d, 0xf72585];
+const beamGeo = new THREE.CylinderGeometry(1.6, 0.25, 1, 12, 1, true);
+beamGeo.translate(0, 0.5, 0);
+
+function addGroup(x, y, z) {
+  const g = new THREE.Group();
+  g.position.set(x, y, z);
+  blocks.add(g);
+  extras.push(g);
+  return g;
+}
+function part(parent, geo, mat, x, y, z, sx, sy, sz, shadow = true) {
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z);
+  m.scale.set(sx, sy, sz);
+  m.castShadow = shadow;
+  m.receiveShadow = true;
+  parent.add(m);
+  return m;
+}
+
+// --- Rubbish tip: mounds, scattered junk, compactor, gulls and garbage trucks.
+function decorateTip(b, w, h, d) {
+  const x = b.position.x;
+  const z = b.position.z;
+  const base = 1.1;
+  const top = base + h;
+  // Mounds of rubbish in grey-brown with coloured junk poking out.
+  const mounds = Math.max(2, Math.floor((w * d) / 14));
+  for (let i = 0; i < mounds; i++) {
+    const mx = x + (Math.random() - 0.5) * w * 0.7;
+    const mz = z + (Math.random() - 0.5) * d * 0.7;
+    const r = 1.2 + Math.random() * Math.min(2.2, Math.min(w, d) * 0.3);
+    piece(sphereGeo, rubbishMat, mx, top - r * 0.45, mz, r * 2, r * 1.3, r * 2);
+    for (let k = 0; k < 5; k++) piece(boxGeo, propMat(PROP_COLORS[(i + k) % PROP_COLORS.length]), mx + (Math.random() - 0.5) * r * 1.4, top + Math.random() * r * 0.4, mz + (Math.random() - 0.5) * r * 1.4, 0.35, 0.25, 0.3, false);
+  }
+  // Chain-link fence with a gate sign.
+  for (let fx = -w / 2; fx <= w / 2; fx += 2) {
+    piece(cylGeo, poleMat, x + fx, top, z - d / 2, 0.06, 1.4, 0.06, false);
+    piece(cylGeo, poleMat, x + fx, top, z + d / 2, 0.06, 1.4, 0.06, false);
+  }
+  piece(boxGeo, fenceMat, x, top, z - d / 2, w, 1.2, 0.04, false);
+  piece(boxGeo, fenceMat, x - w / 2, top, z, 0.04, 1.2, d, false);
+  piece(boxGeo, fenceMat, x + w / 2, top, z, 0.04, 1.2, d, false);
+  textSign('TIP', x, top + 2.2, z + d / 2 + 0.1, Math.min(4, w * 0.8), 1.0, '#f6c90e', '#1d2230');
+  // Compactor (tracked machine) pushing rubbish.
+  const g = addGroup(x + w * 0.25, top, z + d * 0.15);
+  g.rotation.y = -0.6;
+  part(g, boxGeo, trackMat, 0, 0, -0.7, 2.2, 0.5, 0.5);
+  part(g, boxGeo, trackMat, 0, 0, 0.7, 2.2, 0.5, 0.5);
+  part(g, boxGeo, machineMat, -0.2, 0.5, 0, 1.8, 0.8, 1.5);
+  part(g, boxGeo, glassMat, 0.2, 1.3, 0, 0.8, 0.7, 0.9);
+  part(g, boxGeo, stackMat, 1.5, 0.1, 0, 0.2, 1.1, 2.2); // blade
+  // Gulls circling above.
+  for (let i = 0; i < 5; i++) {
+    const gull = addGroup(x, top + 4 + Math.random() * 3, z);
+    part(gull, boxGeo, gullMat, 0, 0, 0, 0.5, 0.12, 0.2, false);
+    const l = part(gull, boxGeo, gullMat, -0.5, 0.05, 0, 0.7, 0.06, 0.15, false);
+    const r = part(gull, boxGeo, gullMat, 0.5, 0.05, 0, 0.7, 0.06, 0.15, false);
+    landmarkAnims.push({ kind: 'gull', g: gull, l, r, cx: x, cz: z, rad: 1.5 + Math.random() * Math.max(2, Math.min(w, d) * 0.6), y: gull.position.y, phase: Math.random() * 6.28, speed: 0.5 + Math.random() * 0.4 });
+  }
+  // Garbage trucks on a loop around the tip.
+  const m = 1.3;
+  const loop = { loop: true, points: [[x - w / 2 - m, z - d / 2 - m], [x + w / 2 + m, z - d / 2 - m], [x + w / 2 + m, z + d / 2 + m], [x - w / 2 - m, z + d / 2 + m]] };
+  loop.length = pathLength(loop);
+  const n = loop.length > 30 ? 3 : 2;
+  for (let i = 0; i < n; i++) {
+    const t = addGroup(x, base, z);
+    part(t, boxGeo, darkMat, 0, 0.3, 0, 0.9, 0.3, 2.4); // chassis
+    part(t, boxGeo, truckGreen, 0, 0.6, 0.75, 0.95, 0.8, 0.8); // cab
+    part(t, boxGeo, glassMat, 0, 0.95, 1.16, 0.8, 0.4, 0.04, false);
+    part(t, boxGeo, truckGreen, 0, 0.6, -0.45, 1.0, 1.0, 1.5); // hopper
+    part(t, boxGeo, darkMat, 0, 0.9, -1.25, 0.9, 0.6, 0.2, false); // tailgate
+    part(t, sphereGeo, beaconMat.clone(), 0, 1.72, 0.75, 0.2, 0.2, 0.2, false).userData.blink = Math.random() * 2;
+    for (const [sx, sz] of [[-0.5, 0.75], [0.5, 0.75], [-0.5, -0.6], [0.5, -0.6]]) {
+      const wh = part(t, cylGeo, trackMat, sx, 0.3, sz, 0.5, 0.2, 0.5, false);
+      wh.rotation.z = Math.PI / 2;
+      wh.position.set(sx, 0.3, sz);
+    }
+    landmarkAnims.push({ kind: 'truck', g: t, loop, s: (i * loop.length) / n, speed: 2.5 + Math.random() });
+  }
+}
+
+// --- Hollywood studio lot: sound stage with a barrel roof, painted sign,
+// water tower, lighting rigs and searchlights that sweep the night sky.
+function decorateStudio(b, w, h, d, item) {
+  const x = b.position.x;
+  const z = b.position.z;
+  const base = 1.1;
+  const top = base + h;
+  const front = z + d / 2;
+  const name = (item.name || '').toUpperCase();
+  // Barrel roof: a half cylinder along the long axis.
+  const alongX = w >= d;
+  if (alongX) piece(cylGeo, hangarRoofMat, x - w / 2, top, z, d * 0.55, w, d).rotation.set(0, 0, -Math.PI / 2);
+  else piece(cylGeo, hangarRoofMat, x, top, z - d / 2, w, d, w * 0.55).rotation.set(Math.PI / 2, 0, 0);
+  // Big painted name and a stage number.
+  textSign(name + ' STUDIOS', x, base + h * 0.72, front + 0.08, Math.min(w * 0.95, 14), Math.min(w * 0.95, 14) * 0.25, '#d94f4f', '#fff4d6', { border: '#fff4d6' });
+  textSign('STAGE ' + (1 + (hashName(name) * 9) | 0), x, base + h * 0.35, front + 0.08, Math.min(w * 0.6, 7), Math.min(w * 0.6, 7) * 0.28, '#1d2230', '#ffffff');
+  // Big sliding stage door.
+  piece(boxGeo, darkMat, x - w * 0.2, base, front + 0.12, Math.min(w * 0.4, 6), Math.min(h * 0.4, 6), 0.1, false);
+  piece(boxGeo, awningMat, x - w * 0.2, base + Math.min(h * 0.4, 6), front + 0.14, Math.min(w * 0.4, 6) + 0.3, 0.25, 0.12, false);
+  // Water tower with the studio badge.
+  const tx = x + w * 0.3;
+  const tz = z - d * 0.25;
+  for (const [sx, sz] of [[-0.6, -0.6], [0.6, -0.6], [-0.6, 0.6], [0.6, 0.6]]) piece(cylGeo, poleMat, tx + sx, top, tz + sz, 0.1, 4.5, 0.1, false);
+  piece(cylGeo, whiteMat, tx, top + 4.5, tz, 2.0, 2.2, 2.0);
+  piece(coneGeo, awningMat, tx, top + 6.7, tz, 2.2, 1.0, 2.2);
+  textSign(name[0] || 'M', tx, top + 5.6, tz + 1.05, 1.3, 1.3, '#d94f4f', '#ffffff', { size: 90 });
+  // Lighting rigs along the roof edge.
+  for (let i = -1; i <= 1; i++) {
+    const lx = x + i * w * 0.3;
+    piece(cylGeo, poleMat, lx, top, front - 0.6, 0.08, 2.4, 0.08, false);
+    piece(boxGeo, signalMat, lx, top + 2.2, front - 0.6, 0.6, 0.5, 0.5, false);
+    const lm = lampMat.clone();
+    lm.userData = { dayI: 0.3, nightI: 2.6, th: 0.45 };
+    piece(boxGeo, lm, lx, top + 2.25, front - 0.3, 0.5, 0.4, 0.05, false);
+  }
+  // Searchlights: two long beams that sweep at night.
+  for (const sx of [-0.35, 0.35]) {
+    const g = addGroup(x + sx * w, top, z + d * 0.1);
+    part(g, cylGeo, stackMat, 0, 0, 0, 0.6, 0.8, 0.6, false);
+    const head = new THREE.Group();
+    head.position.y = 0.9;
+    g.add(head);
+    part(head, cylGeo, darkMat, 0, 0, 0, 0.5, 0.6, 0.5, false);
+    const beam = part(head, beamGeo, beamMat2.clone(), 0, 0.6, 0, 1, 60, 1, false);
+    landmarkAnims.push({ kind: 'searchlight', head, beam, phase: Math.random() * 6.28, speed: 0.35 + Math.random() * 0.2, tilt: 0.55 });
+  }
+  // A camera crane on the lot.
+  const c = addGroup(x - w * 0.3, base, front - 1.2);
+  part(c, boxGeo, trackMat, 0, 0, 0, 1.2, 0.3, 1.2);
+  const arm = part(c, boxGeo, machineMat, 0, 0.3, 0, 0.2, 4, 0.2);
+  arm.rotation.z = -0.9;
+  part(c, boxGeo, darkMat, 3.1, 2.4, 0, 0.6, 0.5, 0.5);
+}
+
+// --- Factory: sawtooth roof, smokestacks with drifting smoke, pipes, gantry.
+function decorateFactory(b, w, h, d) {
+  const x = b.position.x;
+  const z = b.position.z;
+  const base = 1.1;
+  const top = base + h;
+  const front = z + d / 2;
+  b.material.color.lerp(new THREE.Color(0x9a6a56), 0.6);
+  // Sawtooth roof: wedges across the width.
+  const teeth = Math.max(2, Math.floor(w / 2.2));
+  const tw = w / teeth;
+  for (let i = 0; i < teeth; i++) {
+    const wedge = piece(pyramidGeo, factoryMat, x - w / 2 + tw * (i + 0.5), top, z, tw, 1.6, d);
+    wedge.scale.set(tw * 1.0, 1.6, d * 1.0);
+    piece(boxGeo, glassMat, x - w / 2 + tw * (i + 0.5) - tw * 0.2, top + 0.02, z, 0.05, 1.3, d * 0.8, false);
+  }
+  // Smokestacks.
+  const stacks = w > 6 ? 3 : 2;
+  for (let i = 0; i < stacks; i++) {
+    const sx = x - w * 0.3 + (i * w * 0.6) / Math.max(1, stacks - 1);
+    const sz = z - d * 0.25;
+    const sh = 5 + h * 0.35 + i * 1.2;
+    piece(cylGeo, stackMat, sx, top, sz, 1.1, sh, 1.1);
+    piece(cylGeo, awningMat, sx, top + sh - 0.6, sz, 1.2, 0.6, 1.2, false);
+    const puffs = [];
+    for (let k = 0; k < 7; k++) {
+      const sp = new THREE.Sprite(smokeMat.clone());
+      sp.position.set(sx, top + sh, sz);
+      sp.scale.set(0.1, 0.1, 1);
+      blocks.add(sp);
+      extras.push(sp);
+      puffs.push({ sp, t: k / 7 });
+    }
+    landmarkAnims.push({ kind: 'smoke', puffs, x: sx, y: top + sh, z: sz, speed: 0.22 + Math.random() * 0.1 });
+  }
+  // Pipes along the side and a loading gantry at the front.
+  piece(cylGeo, stackMat, x + w / 2 + 0.3, base, z + d * 0.2, 0.3, h * 0.9, 0.3, false);
+  piece(cylGeo, stackMat, x + w / 2 + 0.3, base + h * 0.9, z, 0.3, d * 0.4, 0.3, false).rotation.x = Math.PI / 2;
+  piece(boxGeo, poleMat, x, base, front + 1.0, w * 0.7, 0.2, 0.2, false);
+  piece(cylGeo, poleMat, x - w * 0.3, base, front + 1.0, 0.12, 3.2, 0.12, false);
+  piece(cylGeo, poleMat, x + w * 0.3, base, front + 1.0, 0.12, 3.2, 0.12, false);
+  piece(boxGeo, poleMat, x, base + 3.1, front + 1.0, w * 0.65, 0.2, 0.3, false);
+  piece(boxGeo, darkMat, x, base, front + 0.14, Math.min(3, w * 0.4), Math.min(2.6, h * 0.4), 0.1, false); // roller door
+  textSign('SYSTEM WORKS', x, base + Math.min(2.6, h * 0.4) + 1.1, front + 0.08, Math.min(w * 0.9, 9), Math.min(w * 0.9, 9) * 0.22, '#2b3240', '#f6c90e', { size: 64 });
+}
+
+// --- Apartments: balconies on every side, washing lines, dishes, colour.
+function decorateApartments(b, w, h, d) {
+  const x = b.position.x;
+  const z = b.position.z;
+  const base = 1.1;
+  const top = base + h;
+  b.material.color.lerp(new THREE.Color(0xe8d9c4), 0.5);
+  const floors = Math.floor(h / 2.4);
+  for (let f = 1; f < floors; f++) {
+    const y = base + f * 2.4;
+    for (const [sx, sz, bw, bd] of [[0, 1, w * 0.8, 0.5], [0, -1, w * 0.8, 0.5], [1, 0, 0.5, d * 0.8], [-1, 0, 0.5, d * 0.8]]) {
+      const col = propMat(PROP_COLORS[(f + sx + sz * 2 + 10) % PROP_COLORS.length]);
+      piece(boxGeo, whiteMat, x + (sx * (w + 0.5)) / 2, y, z + (sz * (d + 0.5)) / 2, bw, 0.12, bd, false);
+      piece(boxGeo, col, x + (sx * (w + 0.95)) / 2, y + 0.12, z + (sz * (d + 0.95)) / 2, sx ? 0.06 : bw, 0.6, sz ? 0.06 : bd, false);
+    }
+    if (f % 2 === 0) {
+      // Washing line with a few bright clothes on the front balcony.
+      for (let k = -2; k <= 2; k++) piece(boxGeo, propMat(PROP_COLORS[(k + f + 7) % PROP_COLORS.length]), x + k * w * 0.15, y + 0.8, z + d / 2 + 0.3, 0.3, 0.4, 0.04, false);
+    }
+  }
+  piece(boxGeo, trimMaterial(b.material), x, top - 0.1, z, w + 0.2, 0.2, d + 0.2);
+  for (let i = 0; i < 3; i++) {
+    const dish = piece(discGeo, whiteMat, x + (Math.random() - 0.5) * w * 0.7, top + 0.3, z + (Math.random() - 0.5) * d * 0.7, 0.6, 0.08, 0.6, false);
+    dish.rotation.x = -0.9;
+  }
+  piece(boxGeo, hedgeMat, x, top, z, w * 0.3, 0.4, d * 0.3, false);
+  piece(boxGeo, darkMat, x, base, z + d / 2 + 0.14, Math.min(1.4, w * 0.3), 1.3, 0.1, false);
+  piece(boxGeo, awningMat, x, base + 1.3, z + d / 2 + 0.3, Math.min(1.4, w * 0.3) + 0.6, 0.1, 0.6);
+}
+
+// --- Market square: stalls under striped awnings, a corkboard full of
+// sticky notes, a coffee cart.
+function decorateMarket(b, w, h, d) {
+  const x = b.position.x;
+  const z = b.position.z;
+  const base = 1.1;
+  const top = base + h;
+  b.material.color.setHex(0xd8d2c6);
+  const cols = Math.max(1, Math.floor(w / 2.4));
+  const rows = Math.max(1, Math.floor(d / 2.4));
+  let i = 0;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (Math.random() < 0.2) continue;
+      const sx = x - w / 2 + (c + 0.5) * (w / cols);
+      const sz = z - d / 2 + (r + 0.5) * (d / rows);
+      piece(boxGeo, benchMat, sx, top, sz, 1.6, 0.8, 1.0);
+      for (let k = 0; k < 3; k++) piece(boxGeo, propMat(PROP_COLORS[(i + k) % PROP_COLORS.length]), sx - 0.5 + k * 0.5, top + 0.8, sz, 0.35, 0.3, 0.6, false);
+      piece(cylGeo, poleMat, sx - 0.8, top, sz - 0.5, 0.05, 2.0, 0.05, false);
+      piece(cylGeo, poleMat, sx + 0.8, top, sz - 0.5, 0.05, 2.0, 0.05, false);
+      const aw = piece(pyramidGeo, propMat(awningStripes[i % awningStripes.length]), sx, top + 2.0, sz, 2.0, 0.5, 1.6);
+      aw.scale.z = 1.6;
+      i++;
+    }
+  }
+  // Corkboard with sticky notes.
+  const bw = Math.min(w * 0.8, 6);
+  piece(boxGeo, benchMat, x, top, z + d / 2 - 0.3, bw, 2.6, 0.15);
+  for (let k = 0; k < Math.floor(bw * 2.2); k++) piece(boxGeo, propMat([0xfff176, 0xff8a80, 0x80d8ff, 0xccff90][k % 4]), x - bw / 2 + 0.4 + (k % Math.floor(bw * 1.1)) * 0.9 * (bw / Math.max(1, bw)), top + 0.5 + (k % 3) * 0.7, z + d / 2 - 0.2, 0.55, 0.55, 0.03, false);
+  textSign('DESKTOP', x, top + 3.1, z + d / 2 - 0.3, bw, bw * 0.22, '#8b5e3c', '#fff4d6', { size: 70 });
+  // Coffee cart.
+  const c = addGroup(x - w * 0.35, top, z - d * 0.35);
+  part(c, boxGeo, whiteMat, 0, 0.3, 0, 1.4, 0.9, 0.8);
+  part(c, cylGeo, trackMat, -0.5, 0, 0.45, 0.4, 0.4, 0.1, false).rotation.x = Math.PI / 2;
+  part(c, cylGeo, trackMat, 0.5, 0, 0.45, 0.4, 0.4, 0.1, false).rotation.x = Math.PI / 2;
+  part(c, boxGeo, awningMat, 0, 1.9, 0, 1.8, 0.1, 1.2, false);
+  part(c, cylGeo, poleMat, -0.6, 1.2, 0, 0.05, 0.7, 0.05, false);
+  part(c, cylGeo, poleMat, 0.6, 1.2, 0, 0.05, 0.7, 0.05, false);
+  part(c, cylGeo, propMat(0xff9f1c), 0.3, 1.2, 0, 0.3, 0.35, 0.3, false); // urn
+}
+
+function stepLandmarks(dt, t) {
+  for (const a of landmarkAnims) {
+    if (a.kind === 'truck') {
+      a.s += a.speed * dt;
+      pointAt(a.loop, a.s, _pt);
+      a.g.position.x = _pt.x;
+      a.g.position.z = _pt.z;
+      a.g.rotation.y = Math.atan2(_pt.dx, _pt.dz);
+    } else if (a.kind === 'gull') {
+      const ang = t * a.speed + a.phase;
+      a.g.position.set(a.cx + Math.cos(ang) * a.rad, a.y + Math.sin(t * 1.7 + a.phase) * 0.4, a.cz + Math.sin(ang) * a.rad);
+      a.g.rotation.y = -ang;
+      const flap = Math.sin(t * 9 + a.phase) * 0.6;
+      a.l.rotation.z = flap;
+      a.r.rotation.z = -flap;
+    } else if (a.kind === 'searchlight') {
+      a.head.rotation.y = t * a.speed + a.phase;
+      a.head.rotation.x = -0.9 + Math.sin(t * 0.5 + a.phase) * 0.25;
+      a.beam.material.opacity = 0.3 * Math.max(0, (nightK - 0.5) / 0.5);
+    } else if (a.kind === 'smoke') {
+      for (const p of a.puffs) {
+        p.t += dt * a.speed;
+        if (p.t > 1) p.t -= 1;
+        const k = p.t;
+        p.sp.position.set(a.x + Math.sin(k * 6 + a.x) * 0.6 + k * 2.5, a.y + k * 9, a.z + Math.cos(k * 5) * 0.4);
+        const sc = 0.6 + k * 3.2;
+        p.sp.scale.set(sc, sc, 1);
+        p.sp.material.opacity = 0.35 * (1 - k) * Math.min(1, k * 6);
+      }
+    }
+  }
+}
+
+
+// A big neon guitar on the roof, facing the camera, for the Music folder.
+function guitarSign(b, w, h, d) {
+  const x = b.position.x;
+  const z = b.position.z;
+  const top = 1.1 + (b.userData.style ? h * STYLE_SHAFT[b.userData.style] : h);
+  const S = Math.max(3.4, Math.min(w * 1.3, 7)); // sign height
+  const neon = (c) => {
+    const m = new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.3, roughness: 0.4 });
+    m.userData = { dayI: 0.3, nightI: 2.4, th: 0.55 };
+    return m;
+  };
+  const body = neon(0xff3d7f);
+  const neck = neon(0xffd23f);
+  const strings = neon(0x7df9ff);
+  const zf = z + d / 2 + 0.3; // just in front of the roof edge
+  // Frame and backing board on two posts.
+  piece(cylGeo, poleMat, x - S * 0.5, top, zf - 0.25, 0.1, S * 0.35, 0.1, false);
+  piece(cylGeo, poleMat, x + S * 0.5, top, zf - 0.25, 0.1, S * 0.35, 0.1, false);
+  piece(boxGeo, signalMat, x, top + S * 0.3, zf - 0.2, S * 1.25, S * 1.05, 0.12);
+  const y0 = top + S * 0.38; // bottom of the guitar
+  const u = S / 10; // guitar is 10 units tall in its own scale
+  // Body: two overlapping rounded lobes (flattened spheres), lower one bigger.
+  const lower = piece(sphereGeo, body, x, y0 + u * 2.2, zf, u * 4.2, u * 4.4, 0.25);
+  const upper = piece(sphereGeo, body, x, y0 + u * 4.6, zf, u * 3.3, u * 3.4, 0.25);
+  lower.castShadow = upper.castShadow = false;
+  piece(discGeo, signalMat, x, y0 + u * 3.1, zf + 0.14, u * 1.3, 0.06, u * 1.3, false).rotation.x = Math.PI / 2; // sound hole
+  piece(boxGeo, neck, x, y0 + u * 2.0, zf + 0.12, u * 1.4, u * 0.35, 0.08, false); // bridge
+  // Neck, headstock and tuning pegs.
+  piece(boxGeo, neck, x, y0 + u * 5.6, zf + 0.05, u * 0.9, u * 3.4, 0.14);
+  piece(boxGeo, neck, x, y0 + u * 9.0, zf + 0.05, u * 1.3, u * 1.1, 0.14);
+  for (let i = 0; i < 3; i++) {
+    piece(boxGeo, strings, x - u * 0.85, y0 + u * (9.1 + i * 0.3), zf + 0.1, u * 0.35, u * 0.14, 0.06, false);
+    piece(boxGeo, strings, x + u * 0.85, y0 + u * (9.1 + i * 0.3), zf + 0.1, u * 0.35, u * 0.14, 0.06, false);
+  }
+  // Strings and frets.
+  for (let i = 0; i < 4; i++) piece(boxGeo, strings, x - u * 0.3 + i * u * 0.2, y0 + u * 2.1, zf + 0.2, 0.04, u * 7.0, 0.03, false);
+  for (let i = 0; i < 6; i++) piece(boxGeo, strings, x, y0 + u * (5.9 + i * 0.5), zf + 0.14, u * 0.9, 0.05, 0.03, false);
+  // Little notes beside it.
+  for (const [dx, dy] of [[-0.62, 0.55], [0.6, 0.75], [0.66, 0.35]]) {
+    const nm = neon(0xffffff);
+    piece(sphereGeo, nm, x + dx * S, y0 + dy * S, zf, u * 0.55, u * 0.45, 0.2, false);
+    piece(boxGeo, nm, x + dx * S + u * 0.25, y0 + dy * S + u * 0.55, zf, 0.06, u * 1.2, 0.05, false);
+  }
+  const g = glow(x, y0 + S * 0.5, zf + 0.5, S * 2.2, 0xff5fa0, 0.5, 0.55);
+  blocks.add(g);
+  extras.push(g);
+  nightOnly.push(g);
 }
 
 const columnMat = new THREE.MeshStandardMaterial({ color: 0xf4efe2, roughness: 0.8 });
@@ -1644,6 +2044,7 @@ function updateLife(dt, t) {
     peopleHead.instanceMatrix.needsUpdate = true;
     if (peopleHat) peopleHat.instanceMatrix.needsUpdate = true;
   }
+  stepLandmarks(dt, t);
   // Traffic signals follow the global phase.
   for (const ex of extras) {
     const ax = ex.userData.signalAxis;
