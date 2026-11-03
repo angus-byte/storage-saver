@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'" />
+  <title>Storage Saver</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="scene"></div>
+
+  <aside id="panel">
+    <header>
+      <h1>Storage Saver</h1>
+      <div id="disk">
+        <div class="gauge"><div class="gauge-fill" id="gauge-fill"></div></div>
+        <div class="gauge-label" id="gauge-label">No scan yet</div>
+      </div>
+      <div class="actions">
+        <button id="btn-scan" class="primary">Scan my files</button>
+        <button id="btn-pick" title="Scan a different folder">Choose folder…</button>
+      </div>
+      <div id="progress" hidden><span id="progress-text">Scanning…</span><button id="btn-cancel" class="link">Cancel</button></div>
+    </header>
+
+    <nav id="crumbs"></nav>
+
+    <section id="section-clean">
+      <h2>Safe clean <span id="clean-total" class="muted"></span></h2>
+      <div id="clean-groups"></div>
+      <button id="btn-trash" class="danger" disabled>Move selected to Trash</button>
+      <p class="hint">Nothing is deleted permanently. Items go to the Trash / Recycle Bin so you can get them back.</p>
+    </section>
+
+    <section id="section-top">
+      <h2>Biggest items here</h2>
+      <ol id="top-list"></ol>
+    </section>
+
+    <footer>
+      <div class="legend" id="legend"></div>
+      <p class="hint">Drag to orbit · Scroll to zoom · Click a block to dive in · Double-click background to go up</p>
+    </footer>
+  </aside>
+
+  <div id="tooltip" hidden></div>
+  <div id="toast" hidden></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
