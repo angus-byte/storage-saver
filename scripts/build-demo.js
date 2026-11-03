@@ -31,5 +31,8 @@ html = html
   .replace('<script type="module" src="app.js"></script>', `<script type="module">\n${treemap}\n${mock}\n${pro}\n${app}\n</script>`);
 
 fs.mkdirSync(path.join(root, 'demo'), { recursive: true });
+// City Hall tab (apps + startup items): inlined ahead of the app code.
+const cityhall = r('cityhall.js').replace(/^export /gm, '');
+html = html.replace("import { initCityHall } from './cityhall.js';\n", '').replace('<script type="module">\n', () => `<script type="module">\n${cityhall}\n`);
 fs.writeFileSync(path.join(root, 'demo', 'index.html'), html);
 console.log('demo/index.html written');
