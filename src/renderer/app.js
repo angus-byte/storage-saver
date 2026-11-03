@@ -92,7 +92,7 @@ scene.add(new THREE.HemisphereLight(0xe6f7f6, 0x5e6b73, 1.1));
 const key = new THREE.DirectionalLight(0xfff1dc, 2.1);
 key.position.set(90, 160, 70);
 key.castShadow = true;
-key.shadow.mapSize.set(2048, 2048);
+key.shadow.mapSize.set(4096, 4096);
 key.shadow.camera.left = -140;
 key.shadow.camera.right = 140;
 key.shadow.camera.top = 140;
@@ -168,36 +168,68 @@ const parkMat = new THREE.MeshStandardMaterial({ color: 0x8ccf76, roughness: 0.9
 const roofMat = new THREE.MeshStandardMaterial({ color: 0xb8bcc4, roughness: 0.7 });
 const spireMat = new THREE.MeshStandardMaterial({ color: 0xdfe3e8, metalness: 0.5, roughness: 0.3 });
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 1 });
-const canopyMat = new THREE.MeshStandardMaterial({ color: 0x4fae5f, roughness: 0.9 });
+const canopyMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
+const canopyGeo = new THREE.IcosahedronGeometry(0.5, 1);
 const laneMat = new THREE.MeshBasicMaterial({ color: 0xf2f0e6 });
 
-// Window texture: white base with darker window cells; the material colour tints it.
-const windowTex = (() => {
+// Window texture: light facade with framed windows, floor bands and a few lit rooms.
+// The material colour tints it, so one texture serves every category.
+function makeWindowTexture(seed) {
   const c = document.createElement('canvas');
-  c.width = 64;
-  c.height = 64;
+  c.width = 128;
+  c.height = 128;
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, 64, 64);
-  for (let y = 0; y < 4; y++) {
-    for (let x = 0; x < 4; x++) {
-      const lit = Math.random() < 0.25;
-      ctx.fillStyle = lit ? 'rgba(255,240,200,0.55)' : 'rgba(40,52,74,0.55)';
-      ctx.fillRect(x * 16 + 4, y * 16 + 3, 8, 10);
+  ctx.fillRect(0, 0, 128, 128);
+  // Floor bands.
+  ctx.fillStyle = 'rgba(0,0,0,0.10)';
+  for (let y = 0; y < 128; y += 16) ctx.fillRect(0, y + 13, 128, 3);
+  // Windows with frames.
+  let r = seed;
+  const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const px = x * 16 + 3;
+      const py = y * 16 + 2;
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      ctx.fillRect(px - 1, py - 1, 12, 11);
+      const v = rnd();
+      ctx.fillStyle = v < 0.18 ? 'rgba(255,236,190,0.75)' : v < 0.3 ? 'rgba(140,190,215,0.55)' : 'rgba(45,62,88,0.6)';
+      ctx.fillRect(px, py, 10, 9);
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillRect(px, py, 10, 2);
     }
   }
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
   return t;
-})();
-
-function facadeMaterial(kind, w, h, d) {
-  const tex = windowTex.clone();
-  tex.needsUpdate = true;
-  tex.repeat.set(Math.max(1, Math.round(Math.max(w, d) / 2.2)), Math.max(1, Math.round(h / 2.2)));
-  return new THREE.MeshStandardMaterial({ color: KIND_COLORS[kind] || KIND_COLORS.other, map: tex, roughness: 0.75, metalness: 0.05 });
 }
+const windowTextures = [1, 2, 3, 4].map(makeWindowTexture);
+
+function facadeMaterial(kind, w, h, d, variant = 0) {
+  const tex = windowTextures[variant % windowTextures.length].clone();
+  tex.needsUpdate = true;
+  tex.repeat.set(Math.max(1, Math.round(Math.max(w, d) / 2.6)), Math.max(1, Math.round(h / 2.6)));
+  const color = new THREE.Color(KIND_COLORS[kind] || KIND_COLORS.other);
+  const hsl = {};
+  color.getHSL(hsl);
+  color.setHSL(hsl.h + (Math.random() - 0.5) * 0.03, hsl.s, Math.min(0.9, hsl.l + (Math.random() - 0.5) * 0.12));
+  return new THREE.MeshStandardMaterial({ color, map: tex, roughness: 0.7, metalness: 0.05 });
+}
+function trimMaterial(base) {
+  const c = base.color.clone();
+  const hsl = {};
+  c.getHSL(hsl);
+  c.setHSL(hsl.h, hsl.s * 0.8, Math.max(0.15, hsl.l * 0.72));
+  return new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 });
+}
+const glassMat = new THREE.MeshStandardMaterial({ color: 0x9fd3e8, roughness: 0.2, metalness: 0.4 });
+const darkMat = new THREE.MeshStandardMaterial({ color: 0x2b3240, roughness: 0.8 });
+const awningMat = new THREE.MeshStandardMaterial({ color: 0xd94f4f, roughness: 0.9 });
+const tankMat = new THREE.MeshStandardMaterial({ color: 0x8a6a4e, roughness: 0.9 });
+const acMat = new THREE.MeshStandardMaterial({ color: 0xcfd4da, roughness: 0.8 });
 
 // ---------------------------------------------------------------------------
 // Layout: districts (top-level items) separated by streets; buildings inside.
@@ -331,7 +363,10 @@ function placeSuburb(r) {
   // Suburb sign at the front edge; building labels on the biggest items.
   if (w * d > 90) addLabel({ name: SUBURB_NAMES[sub.kind] || sub.kind, size: sub.total }, x0 + w / 2, 1.2, z0 + d - 1, Math.min(w, 30), true);
   for (const lr of lotRects.slice(0, 3)) {
-    if (lr.w * lr.h > 40) addLabel(lr.item.item, lr.x + lr.w / 2, 1.1 + heightFor(lr.item.item.size), lr.y + lr.h / 2, Math.min(lr.w + 6, 26));
+    if (lr.w * lr.h > 40) {
+      const bh = heightFor(lr.item.item.size);
+      addLabel(lr.item.item, lr.x + lr.w / 2, 1.1 + bh + (bh > 30 ? bh * 0.55 : 2), lr.y + lr.h / 2, Math.min(lr.w + 6, 26));
+    }
   }
 }
 
@@ -344,7 +379,7 @@ function placeBuilding(r, depth, gap) {
   const d = Math.max(0.3, Math.min(r.h - gap, side * (0.9 + Math.random() * 0.2)));
   if (w < 0.6 || d < 0.6) return 0;
   const h = heightFor(item.size);
-  const mat = facadeMaterial(item.kind, w, h, d);
+  const mat = facadeMaterial(item.kind, w, h, d, Math.floor(Math.random() * 4));
   const b = new THREE.Mesh(boxGeo, mat);
   b.position.set(r.x + r.w / 2, 1.1, r.y + r.h / 2);
   b.scale.set(w, 0.001, d);
@@ -353,37 +388,81 @@ function placeBuilding(r, depth, gap) {
   b.receiveShadow = true;
   blocks.add(b);
   meshes.push(b);
-  decorateRoof(b, w, h, d);
+  decorate(b, w, h, d);
   return h;
 }
 
-function decorateRoof(b, w, h, d) {
+// Decoration helpers: every piece is parented to the building's position so
+// a demolish removes them together (see demolish()).
+function piece(geo, mat, x, y, z, sx, sy, sz, shadow = true) {
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z);
+  m.scale.set(sx, sy, sz);
+  m.castShadow = shadow;
+  m.receiveShadow = true;
+  blocks.add(m);
+  extras.push(m);
+  return m;
+}
+
+function decorate(b, w, h, d) {
   const x = b.position.x;
   const z = b.position.z;
-  const top = 1.1 + h;
+  const base = 1.1;
+  const top = base + h;
   const minSide = Math.min(w, d);
+  const trim = trimMaterial(b.material);
+  const front = z + d / 2; // the face towards the camera
+
+  // Ground floor: darker podium band and an entrance with an awning.
+  if (minSide > 1.4) {
+    piece(boxGeo, trim, x, base, z, w + 0.16, Math.min(1.6, h * 0.12), d + 0.16);
+    if (h > 6 && w > 2) {
+      const doorW = Math.min(1.1, w * 0.3);
+      piece(boxGeo, darkMat, x, base, front + 0.02, doorW, 1.1, 0.12, false);
+      piece(boxGeo, awningMat, x, base + 1.15, front + 0.25, doorW + 0.5, 0.1, 0.55);
+    }
+  }
+
   if (h > 30 && minSide > 3) {
-    // Tiered crown and spire for the tallest towers.
-    const tier = new THREE.Mesh(boxGeo, b.material);
-    tier.position.set(x, top, z);
-    tier.scale.set(w * 0.6, h * 0.08, d * 0.6);
-    tier.castShadow = true;
-    blocks.add(tier);
-    extras.push(tier);
-    const spire = new THREE.Mesh(coneGeo, spireMat);
-    spire.position.set(x, top + h * 0.08, z);
-    spire.scale.set(Math.min(1.6, minSide * 0.25), h * 0.22, Math.min(1.6, minSide * 0.25));
-    blocks.add(spire);
-    extras.push(spire);
-  } else if (minSide > 2.5 && h > 8) {
-    // Rooftop plant room or water tank.
-    const roof = new THREE.Mesh(Math.random() < 0.5 ? boxGeo : cylGeo, roofMat);
-    roof.position.set(x + (Math.random() - 0.5) * w * 0.3, top, z + (Math.random() - 0.5) * d * 0.3);
-    const s = Math.min(1.6, minSide * 0.3);
-    roof.scale.set(s, 0.6 + Math.random() * 0.8, s);
-    roof.castShadow = true;
-    blocks.add(roof);
-    extras.push(roof);
+    // Skyscraper: setbacks, cornices, crown, spire and antenna.
+    const t1 = piece(boxGeo, b.material, x, top, z, w * 0.72, h * 0.12, d * 0.72);
+    const top1 = top + h * 0.12;
+    piece(boxGeo, trim, x, top1 - 0.1, z, w * 0.72 + 0.2, 0.25, d * 0.72 + 0.2);
+    piece(boxGeo, b.material, x, top1, z, w * 0.48, h * 0.09, d * 0.48);
+    const top2 = top1 + h * 0.09;
+    piece(boxGeo, trim, x, top2 - 0.1, z, w * 0.48 + 0.2, 0.25, d * 0.48 + 0.2);
+    piece(boxGeo, glassMat, x, top2, z, w * 0.3, h * 0.05, d * 0.3);
+    const top3 = top2 + h * 0.05;
+    piece(coneGeo, spireMat, x, top3, z, Math.min(1.4, minSide * 0.22), h * 0.2, Math.min(1.4, minSide * 0.22));
+    piece(cylGeo, spireMat, x, top3 + h * 0.2, z, 0.12, h * 0.08, 0.12, false);
+    // Cornice ledges along the shaft.
+    piece(boxGeo, trim, x, base + h * 0.35, z, w + 0.2, 0.22, d + 0.2);
+    piece(boxGeo, trim, x, top - 0.25, z, w + 0.24, 0.25, d + 0.24);
+    t1.material = b.material;
+  } else if (h > 12 && minSide > 2.2) {
+    // Mid-rise: cornice, parapet, rooftop water tank or plant room, AC units.
+    piece(boxGeo, trim, x, top - 0.2, z, w + 0.22, 0.22, d + 0.22);
+    const roll = Math.random();
+    if (roll < 0.4) {
+      // Water tank on legs.
+      const tx = x + (Math.random() - 0.5) * w * 0.4;
+      const tz = z + (Math.random() - 0.5) * d * 0.4;
+      piece(cylGeo, darkMat, tx, top, tz, 0.5, 0.5, 0.5, false);
+      piece(cylGeo, tankMat, tx, top + 0.5, tz, 0.9, 1.1, 0.9);
+      piece(coneGeo, trim, tx, top + 1.6, tz, 0.95, 0.35, 0.95);
+    } else if (roll < 0.75) {
+      // Penthouse / plant room with a door.
+      piece(boxGeo, b.material, x + (Math.random() - 0.5) * w * 0.3, top, z + (Math.random() - 0.5) * d * 0.3, w * 0.45, 1.1, d * 0.45);
+    }
+    // A couple of AC units.
+    for (let i = 0; i < 2; i++) piece(boxGeo, acMat, x + (Math.random() - 0.5) * w * 0.7, top, z + (Math.random() - 0.5) * d * 0.7, 0.45, 0.3, 0.45, false);
+    if (Math.random() < 0.5) piece(cylGeo, spireMat, x + w * 0.3, top, z - d * 0.3, 0.06, 2.2 + Math.random() * 2, 0.06, false);
+  } else if (minSide > 1.5) {
+    // Low-rise: parapet and a chimney or skylight.
+    piece(boxGeo, trim, x, top - 0.15, z, w + 0.18, 0.18, d + 0.18);
+    if (Math.random() < 0.6) piece(boxGeo, trim, x + (Math.random() - 0.5) * w * 0.5, top, z + (Math.random() - 0.5) * d * 0.5, 0.4, 0.7, 0.4, false);
+    else piece(boxGeo, glassMat, x, top, z, w * 0.4, 0.25, d * 0.4, false);
   }
 }
 
@@ -422,24 +501,46 @@ function placeTrees() {
   const n = Math.min(treeSpots.length, 900);
   if (!n) return;
   const trunks = new THREE.InstancedMesh(cylGeo, trunkMat, n);
-  const canopies = new THREE.InstancedMesh(new THREE.SphereGeometry(0.5, 8, 7), canopyMat, n);
+  const lower = new THREE.InstancedMesh(canopyGeo, canopyMat, n);
+  const upper = new THREE.InstancedMesh(canopyGeo, canopyMat, n);
+  const pines = new THREE.InstancedMesh(coneGeo, canopyMat, n);
   const m = new THREE.Matrix4();
   const color = new THREE.Color();
+  const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
   for (let i = 0; i < n; i++) {
     const [x, z] = treeSpots[i];
     const s = 0.8 + Math.random() * 0.6;
-    m.makeScale(0.25 * s, 0.9 * s, 0.25 * s);
+    const pine = Math.random() < 0.22;
+    const trunkH = (pine ? 0.7 : 0.9) * s;
+    m.makeScale(0.22 * s, trunkH, 0.22 * s);
     m.setPosition(x, 1.1, z);
     trunks.setMatrixAt(i, m);
-    m.makeScale(1.6 * s, 1.5 * s, 1.6 * s);
-    m.setPosition(x, 1.1 + 0.9 * s + 0.6 * s, z);
-    canopies.setMatrixAt(i, m);
-    canopies.setColorAt(i, color.setHSL(0.3 + Math.random() * 0.06, 0.5, 0.42 + Math.random() * 0.12));
+    color.setHSL(0.28 + Math.random() * 0.08, 0.6, 0.28 + Math.random() * 0.12);
+    if (pine) {
+      m.makeScale(1.3 * s, 2.6 * s, 1.3 * s);
+      m.setPosition(x, 1.1 + trunkH * 0.6, z);
+      pines.setMatrixAt(i, m);
+      pines.setColorAt(i, color.offsetHSL(0.03, 0, -0.06));
+      lower.setMatrixAt(i, hidden);
+      upper.setMatrixAt(i, hidden);
+    } else {
+      m.makeScale(1.7 * s, 1.3 * s, 1.7 * s);
+      m.setPosition(x + (Math.random() - 0.5) * 0.2, 1.1 + trunkH + 0.5 * s, z + (Math.random() - 0.5) * 0.2);
+      lower.setMatrixAt(i, m);
+      lower.setColorAt(i, color);
+      m.makeScale(1.15 * s, 1.0 * s, 1.15 * s);
+      m.setPosition(x + (Math.random() - 0.5) * 0.3, 1.1 + trunkH + 1.15 * s, z + (Math.random() - 0.5) * 0.3);
+      upper.setMatrixAt(i, m);
+      upper.setColorAt(i, color.clone().offsetHSL(0, 0, 0.07));
+      pines.setMatrixAt(i, hidden);
+    }
   }
-  trunks.castShadow = canopies.castShadow = true;
-  blocks.add(trunks);
-  blocks.add(canopies);
-  extras.push(trunks, canopies);
+  for (const im of [trunks, lower, upper, pines]) {
+    im.castShadow = true;
+    im.receiveShadow = true;
+    blocks.add(im);
+    extras.push(im);
+  }
 }
 
 function addLabel(item, x, y, z, width, sign = false) {
