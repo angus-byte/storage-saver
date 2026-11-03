@@ -382,11 +382,14 @@ function placeSuburb(r) {
   let tallest = 0;
   let tallestRect = null;
   for (const lr of lotRects) {
+    const before = meshes.length;
     const h = placeBuilding(lr, 1, LOT_GAP);
     if (h > tallest) {
       tallest = h;
       tallestRect = lr;
     }
+    const built = meshes.length > before ? meshes[meshes.length - 1].userData.footprint : null;
+    fillLot(lr, built);
   }
   // Suburb sign at the front edge; building labels on the biggest items.
   if (w * d > 90) addLabel({ name: SUBURB_NAMES[sub.kind] || sub.kind, size: sub.total }, x0 + w / 2, 1.2, z0 + d - 1, Math.min(w, 30), true);
@@ -423,6 +426,7 @@ function placeBuilding(r, depth, gap) {
   activeBuilding = b;
   decorate(b, w, h, d);
   activeBuilding = null;
+  b.userData.footprint = { x: b.position.x, z: b.position.z, w, d };
   return h;
 }
 let activeBuilding = null;
@@ -515,6 +519,139 @@ function decorate(b, w, h, d) {
     piece(boxGeo, trim, x, top - 0.15, z, w + 0.18, 0.18, d + 0.18);
     if (Math.random() < 0.6) piece(boxGeo, trim, x + (Math.random() - 0.5) * w * 0.5, top, z + (Math.random() - 0.5) * d * 0.5, 0.4, 0.7, 0.4, false);
     else piece(boxGeo, glassMat, x, top, z, w * 0.4, 0.25, d * 0.4, false);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Lot fillers: the pavement left around a building gets small city props so
+// no block is a blank slab (parking, cafés, kiosks, gardens, playgrounds…).
+// ---------------------------------------------------------------------------
+const CELL = 3.0;
+const PROP_COLORS = [0xff6b6b, 0xffd166, 0x4cc9f0, 0xf72585, 0x90be6d, 0xff9f1c];
+const propMats = {};
+function propMat(hex) {
+  if (!propMats[hex]) propMats[hex] = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.85 });
+  return propMats[hex];
+}
+const asphaltTileMat = new THREE.MeshStandardMaterial({ color: 0x565b66, roughness: 0.95 });
+const soilMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 1 });
+const hedgeMat = new THREE.MeshStandardMaterial({ color: 0x3f9a4f, roughness: 0.9 });
+
+function fillLot(lr, b) {
+  const x0 = lr.x + LOT_GAP / 2;
+  const z0 = lr.y + LOT_GAP / 2;
+  const w = lr.w - LOT_GAP;
+  const d = lr.h - LOT_GAP;
+  const strips = [];
+  if (!b) {
+    strips.push({ x: x0, z: z0, w, d });
+  } else {
+    const m = 0.7; // breathing room around the building
+    const bx0 = b.x - b.w / 2 - m;
+    const bx1 = b.x + b.w / 2 + m;
+    const bz0 = b.z - b.d / 2 - m;
+    const bz1 = b.z + b.d / 2 + m;
+    strips.push({ x: x0, z: z0, w, d: bz0 - z0 }); // top
+    strips.push({ x: x0, z: bz1, w, d: z0 + d - bz1 }); // bottom
+    strips.push({ x: x0, z: bz0, w: bx0 - x0, d: bz1 - bz0 }); // left
+    strips.push({ x: bx1, z: bz0, w: x0 + w - bx1, d: bz1 - bz0 }); // right
+  }
+  for (const st of strips) {
+    if (st.w < CELL || st.d < CELL) continue;
+    const cols = Math.floor(st.w / CELL);
+    const rows = Math.floor(st.d / CELL);
+    const ox = st.x + (st.w - cols * CELL) / 2;
+    const oz = st.z + (st.d - rows * CELL) / 2;
+    // A strip of several cells gets one theme so it reads as a place, not clutter.
+    const theme = Math.random();
+    for (let i = 0; i < cols; i++) {
+      for (let j = 0; j < rows; j++) {
+        const cx = ox + (i + 0.5) * CELL;
+        const cz = oz + (j + 0.5) * CELL;
+        const r = Math.random();
+        if (r < 0.3) continue; // leave open pavement
+        if (r < 0.5) {
+          piece(boxGeo, parkMat, cx, 1.1, cz, CELL - 0.5, 0.05, CELL - 0.5, false); // lawn
+          if (Math.random() < 0.5) treeSpots.push([cx + (Math.random() - 0.5), cz + (Math.random() - 0.5)]);
+          continue;
+        }
+        placeProp(cx, cz, Math.random() < 0.7 ? theme : Math.random(), (i + j) % 2 === 0);
+      }
+    }
+  }
+}
+
+function placeProp(x, z, theme, alt) {
+  const y = 1.1;
+  if (theme < 0.22) {
+    // Parking bay with a car in most spaces.
+    piece(boxGeo, asphaltTileMat, x, y, z, CELL - 0.1, 0.06, CELL - 0.1, false);
+    piece(boxGeo, laneMat, x - CELL / 2 + 0.1, y + 0.06, z, 0.08, 0.02, CELL - 0.4, false);
+    if (Math.random() < 0.7) {
+      const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.55, 0.5), roughness: 0.5, metalness: 0.3 });
+      piece(boxGeo, mat, x, y + 0.06, z, 0.8, 0.45, 1.6);
+      piece(boxGeo, glassMat, x, y + 0.51, z + 0.1, 0.7, 0.3, 0.85, false);
+    }
+  } else if (theme < 0.4) {
+    // Café terrace: umbrella, table, chairs.
+    const c = PROP_COLORS[Math.floor(Math.random() * PROP_COLORS.length)];
+    piece(cylGeo, poleMat, x, y, z, 0.06, 2.0, 0.06, false);
+    piece(coneGeo, propMat(c), x, y + 1.6, z, 1.7, 0.45, 1.7);
+    piece(discGeo, whiteMat, x, y + 0.55, z, 0.8, 0.06, 0.8, false);
+    piece(cylGeo, poleMat, x, y, z, 0.08, 0.55, 0.08, false);
+    for (const [dx, dz] of [[0.65, 0], [-0.65, 0], [0, 0.65], [0, -0.65]]) piece(boxGeo, benchMat, x + dx, y, z + dz, 0.35, 0.4, 0.35, false);
+  } else if (theme < 0.52) {
+    // Flower bed.
+    piece(boxGeo, soilMat, x, y, z, CELL - 0.5, 0.25, CELL - 0.5, false);
+    for (let k = 0; k < 5; k++) {
+      const c = [0xff5d8f, 0xffd23f, 0xff8c42, 0xffffff, 0xb388ff][k];
+      piece(sphereGeo, propMat(c), x + (Math.random() - 0.5) * (CELL - 1), y + 0.35, z + (Math.random() - 0.5) * (CELL - 1), 0.35, 0.3, 0.35, false);
+    }
+  } else if (theme < 0.62) {
+    // Kiosk with striped awning.
+    piece(boxGeo, whiteMat, x, y, z, 1.5, 1.3, 1.3);
+    piece(boxGeo, propMat(alt ? 0xff6b6b : 0x4cc9f0), x, y + 1.3, z + 0.35, 1.8, 0.1, 0.9);
+    piece(boxGeo, signalMat, x, y + 0.35, z + 0.66, 0.9, 0.5, 0.04, false);
+    piece(boxGeo, propMat(0xffd166), x, y + 1.42, z, 1.2, 0.3, 0.6, false);
+  } else if (theme < 0.72) {
+    // Playground: slide and a swing frame.
+    if (alt) {
+      piece(cylGeo, poleMat, x - 0.5, y, z, 0.06, 1.3, 0.06, false);
+      const slide = piece(boxGeo, propMat(0xffd166), x + 0.15, y + 0.55, z, 1.6, 0.08, 0.5, false);
+      slide.rotation.z = 0.7;
+      piece(boxGeo, propMat(0x4cc9f0), x - 0.5, y + 1.3, z, 0.6, 0.08, 0.6, false);
+    } else {
+      piece(cylGeo, poleMat, x - 0.8, y, z, 0.06, 1.6, 0.06, false);
+      piece(cylGeo, poleMat, x + 0.8, y, z, 0.06, 1.6, 0.06, false);
+      piece(boxGeo, poleMat, x, y + 1.6, z, 1.7, 0.06, 0.06, false);
+      for (const dx of [-0.35, 0.35]) {
+        piece(boxGeo, poleMat, x + dx, y + 0.5, z, 0.02, 1.1, 0.02, false);
+        piece(boxGeo, propMat(0xff6b6b), x + dx, y + 0.45, z, 0.35, 0.05, 0.2, false);
+      }
+    }
+  } else if (theme < 0.82) {
+    // Market stall.
+    piece(boxGeo, benchMat, x, y, z, 1.6, 0.7, 0.9, false);
+    for (const [dx, dz] of [[-0.75, -0.4], [0.75, -0.4], [-0.75, 0.4], [0.75, 0.4]]) piece(cylGeo, poleMat, x + dx, y, z + dz, 0.05, 1.7, 0.05, false);
+    piece(boxGeo, propMat(alt ? 0xf72585 : 0x90be6d), x, y + 1.7, z, 1.9, 0.08, 1.2);
+    for (let k = 0; k < 3; k++) piece(boxGeo, propMat(PROP_COLORS[(k + (alt ? 2 : 0)) % PROP_COLORS.length]), x - 0.5 + k * 0.5, y + 0.7, z, 0.35, 0.2, 0.5, false);
+  } else if (theme < 0.9) {
+    // Hedge row with a tree.
+    piece(sphereGeo, hedgeMat, x, y, z, CELL - 0.4, 0.9, 0.7, true);
+    if (alt) treeSpots.push([x, z + 0.7]);
+  } else {
+    // Small plaza: paving, statue plinth and bike racks.
+    piece(boxGeo, stoneMat, x, y, z, CELL - 0.2, 0.05, CELL - 0.2, false);
+    if (alt) {
+      piece(boxGeo, stoneMat, x, y + 0.05, z, 0.6, 0.5, 0.6, false);
+      piece(cylGeo, poleMat, x, y + 0.55, z, 0.18, 0.7, 0.18, false);
+      piece(sphereGeo, poleMat, x, y + 1.25, z, 0.3, 0.3, 0.3, false);
+    } else {
+      for (let k = 0; k < 3; k++) {
+        const r = piece(torusGeo, poleMat, x - 0.6 + k * 0.6, y + 0.3, z, 0.5, 1, 0.5, false);
+        r.rotation.x = 0;
+      }
+    }
   }
 }
 
