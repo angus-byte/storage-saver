@@ -22,11 +22,20 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 #scene canvas { display: block; }
 
 #panel {
-  position: absolute; top: 16px; left: 16px; bottom: 16px; width: 360px;
-  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
-  backdrop-filter: blur(14px); display: flex; flex-direction: column; gap: 14px; padding: 18px; overflow-y: auto;
+  position: absolute; top: 16px; left: 16px; width: 340px; max-height: calc(100% - 32px);
+  background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+  backdrop-filter: blur(14px); display: flex; flex-direction: column; padding: 14px 16px; overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.25); transition: width 0.2s ease;
 }
-h1 { font-size: 18px; margin: 0 0 10px; letter-spacing: 0.2px; }
+#panel.collapsed { width: 320px; }
+#panel.collapsed #panel-body { display: none; }
+#panel-body { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.titlebar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+h1 { font-size: 16px; margin: 0; letter-spacing: 0.2px; }
+button.icon { width: 30px; height: 30px; padding: 0; border-radius: 50%; display: grid; place-items: center; font-size: 14px; line-height: 1; }
+#panel.collapsed button.icon { transform: rotate(-90deg); }
+#crumbs:empty { display: none; }
+#crumbs { margin-top: 10px; }
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); margin: 0 0 8px; }
 .muted { color: var(--muted); font-weight: normal; text-transform: none; letter-spacing: 0; }
 .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
@@ -36,7 +45,8 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.8px; color: v
 .gauge-fill.warn { background: linear-gradient(90deg, var(--cache), var(--danger)); }
 .gauge-label { font-size: 12px; color: var(--muted); margin-top: 6px; }
 
-.actions { display: flex; gap: 8px; margin-top: 12px; }
+.actions { display: flex; gap: 8px; margin-top: 10px; }
+.actions .primary { flex: 1; white-space: nowrap; }
 button { font: inherit; color: var(--text); background: #1b2435; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; cursor: pointer; }
 button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: 0.45; cursor: default; }

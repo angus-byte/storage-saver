@@ -12,7 +12,10 @@
 
   <aside id="panel">
     <header>
-      <h1>Storage Saver</h1>
+      <div class="titlebar">
+        <h1>Storage Saver</h1>
+        <button id="btn-panel" class="icon" title="Show details">▾</button>
+      </div>
       <div id="disk">
         <div class="gauge"><div class="gauge-fill" id="gauge-fill"></div></div>
         <div class="gauge-label" id="gauge-label">No scan yet</div>
@@ -22,9 +25,10 @@
         <button id="btn-pick" title="Scan a different folder">Choose folder…</button>
       </div>
       <div id="progress" hidden><span id="progress-text">Scanning…</span><button id="btn-cancel" class="link">Cancel</button></div>
+      <nav id="crumbs"></nav>
     </header>
 
-    <nav id="crumbs"></nav>
+    <div id="panel-body">
 
     <section id="section-clean">
       <h2>Safe clean <span id="clean-total" class="muted"></span></h2>
@@ -42,6 +46,7 @@
       <div class="legend" id="legend"></div>
       <p class="hint">Drag to orbit · Scroll to zoom · Click a building for options · Double-click the sky, press Esc, or use Leave to go back out</p>
     </footer>
+    </div>
   </aside>
 
   <button id="btn-night" class="float">☾ Night</button>

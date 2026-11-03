@@ -392,7 +392,7 @@ function lotFor(size) {
   return 6 + 48 * Math.pow(size / Math.max(maxSizeInView, 1), 0.45);
 }
 
-const SUBURB_NAMES = { cache: 'Cache Town', trash: 'Trash Yard', downloads: 'Downloads', media: 'Media District', apps: 'App Quarter', documents: 'Document Row', system: 'System Heights', other: 'Old Town', free: 'Free Space Park' };
+const SUBURB_NAMES = { cache: 'Cache Canyon', trash: 'Trash Flats', downloads: 'Downtown Downloads', media: 'Media Heights', apps: 'App Avenue', documents: 'Document Docks', system: 'System Hills', other: 'Odds & Ends Village', free: 'Free Space Park' };
 
 function layout() {
   clearBlocks();
@@ -536,8 +536,10 @@ function placeBuilding(r, depth, gap) {
   const w = Math.max(0.3, Math.min(r.w - gap, side * (0.9 + Math.random() * 0.2)));
   const d = Math.max(0.3, Math.min(r.h - gap, side * (0.9 + Math.random() * 0.2)));
   if (w < 0.6 || d < 0.6) return 0;
-  const h = heightFor(item.size);
-  const mat = facadeMaterial(item.kind, w, h, d, Math.floor(Math.random() * 4));
+  let h = heightFor(item.size);
+  const landmark = landmarkFor(item);
+  if (landmark === 'library') h = Math.min(h, 9);
+  const mat = landmark ? new THREE.MeshStandardMaterial({ color: 0xe9e2d0, roughness: 0.85 }) : facadeMaterial(item.kind, w, h, d, Math.floor(Math.random() * 4));
   const b = new THREE.Mesh(boxGeo, mat);
   b.position.set(r.x + r.w / 2, 1.1, r.y + r.h / 2);
   b.scale.set(w, 0.001, d);
@@ -551,7 +553,8 @@ function placeBuilding(r, depth, gap) {
   blocks.add(b);
   meshes.push(b);
   activeBuilding = b;
-  decorate(b, w, h, d);
+  if (landmark === 'library') decorateLibrary(b, w, h, d, heightFor(item.size));
+  else decorate(b, w, h, d);
   activeBuilding = null;
   b.userData.footprint = { x: b.position.x, z: b.position.z, w, d };
   return h;
@@ -577,6 +580,56 @@ function piece(geo, mat, x, y, z, sx, sy, sz, shadow = true) {
   blocks.add(m);
   extras.push(m);
   return m;
+}
+
+// Folders with a well-known role get a landmark instead of a generic tower.
+function landmarkFor(item) {
+  if (!item.isDir) return null;
+  const n = item.name.toLowerCase();
+  if (n === 'library') return 'library';
+  return null;
+}
+
+const columnMat = new THREE.MeshStandardMaterial({ color: 0xf4efe2, roughness: 0.8 });
+const domeMat = new THREE.MeshStandardMaterial({ color: 0x5f9c8a, roughness: 0.5, metalness: 0.3 });
+const pyramidGeo = new THREE.ConeGeometry(0.5, 1, 4);
+pyramidGeo.translate(0, 0.5, 0);
+pyramidGeo.rotateY(Math.PI / 4);
+
+// A classical library: steps, colonnade, entablature, pediment and a dome
+// whose size carries the folder's size.
+function decorateLibrary(b, w, h, d, fullH) {
+  const x = b.position.x;
+  const z = b.position.z;
+  const base = 1.1;
+  const top = base + h;
+  const front = z + d / 2;
+  // Steps.
+  piece(boxGeo, stoneMat, x, base, z, w + 1.6, 0.35, d + 1.6, false);
+  piece(boxGeo, stoneMat, x, base + 0.35, z, w + 0.9, 0.35, d + 0.9, false);
+  // Colonnade along the front.
+  const n = Math.max(3, Math.floor(w / 1.1));
+  for (let i = 0; i < n; i++) {
+    const cx = x - w / 2 + 0.55 + (i * (w - 1.1)) / Math.max(1, n - 1);
+    piece(cylGeo, columnMat, cx, base + 0.7, front + 0.55, 0.32, h - 0.7, 0.32);
+    piece(boxGeo, columnMat, cx, base + h - 0.05, front + 0.55, 0.5, 0.2, 0.5, false);
+  }
+  // Entablature and pediment over the portico.
+  piece(boxGeo, columnMat, x, top, z + d * 0.25, w + 0.4, 0.6, d * 0.5 + 1.3);
+  const ped = piece(pyramidGeo, stoneMat, x, top + 0.6, front + 0.1, w + 0.2, 1.4, 1.6);
+  ped.scale.z = 1.6;
+  // Doorway.
+  piece(boxGeo, darkMat, x, base + 0.7, front + 0.08, Math.min(1.6, w * 0.3), 2.2, 0.1, false);
+  // Dome: taller for bigger folders.
+  const r = Math.min(w, d) * 0.38;
+  const domeH = Math.max(2.5, Math.min(fullH * 0.35, 14));
+  piece(cylGeo, columnMat, x, top, z - d * 0.1, r * 1.1, 1.2, r * 1.1);
+  const dome = piece(sphereGeo, domeMat, x, top + 1.2 - domeH * 0.1, z - d * 0.1, r * 2, domeH * 1.2, r * 2);
+  dome.castShadow = true;
+  piece(cylGeo, columnMat, x, top + 1.2 + domeH * 0.5, z - d * 0.1, r * 0.35, 1.0, r * 0.35, false);
+  piece(coneGeo, spireMat, x, top + 2.2 + domeH * 0.5, z - d * 0.1, r * 0.3, 1.2, r * 0.3, false);
+  // "LIBRARY" lettering along the entablature as a dark strip.
+  piece(boxGeo, signalMat, x, top + 0.15, front + 0.95, w * 0.5, 0.3, 0.03, false);
 }
 
 function decorate(b, w, h, d) {
@@ -1363,10 +1416,17 @@ function updateHover() {
   const hits = raycaster.intersectObjects(meshes, false);
   const hit = hits.length ? hits[0].object : null;
   if (hit !== hovered) {
-    if (hovered && !hovered.userData.district) hovered.material.emissive.setHex(0x000000);
+    // Highlight by lightening the facade colour; emissive is reserved for lit windows.
+    if (hovered && hovered.userData.hoverColor) {
+      hovered.material.color.copy(hovered.userData.hoverColor);
+      hovered.userData.hoverColor = null;
+    }
     hovered = hit;
     if (hovered) {
-      if (!hovered.userData.district) hovered.material.emissive.setHex(0x3a3a3a);
+      if (!hovered.userData.district) {
+        hovered.userData.hoverColor = hovered.material.color.clone();
+        hovered.material.color.offsetHSL(0, 0, 0.14);
+      }
       const it = hovered.userData.item;
       tooltip.innerHTML = `<b>${esc(it.name)}</b>${fmt(it.size)} · ${KIND_LABELS[it.kind] || it.kind}${it.files ? ` · ${it.files.toLocaleString()} files` : ''}${it.isDir ? ' · click to open' : ''}<div class="path">${esc(it.path || '')}</div>`;
       tooltip.hidden = false;
@@ -1734,6 +1794,20 @@ $('btn-pick').onclick = async () => {
 
 $('btn-leave').onclick = leaveBuilding;
 $('btn-night').onclick = toggleNight;
+// Side panel: collapsed by default, remembered per browser.
+function setPanel(open) {
+  $('panel').classList.toggle('collapsed', !open);
+  $('btn-panel').title = open ? 'Hide details' : 'Show details';
+  try {
+    localStorage.setItem('ss-panel-open', open ? '1' : '0');
+  } catch {}
+}
+let panelOpen = false;
+try {
+  panelOpen = localStorage.getItem('ss-panel-open') === '1';
+} catch {}
+setPanel(panelOpen);
+$('btn-panel').onclick = () => setPanel($('panel').classList.contains('collapsed'));
 renderLegend();
 api.diskInfo().then((d) => {
   state.disk = d;
