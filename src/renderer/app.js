@@ -58,7 +58,11 @@ const MAX_H = 46;
 // State
 // ---------------------------------------------------------------------------
 const state = { disk: null, tree: null, suggestions: null, path: [], selected: new Map(), scanning: false };
-let night = false;
+let night = false; // target state
+let nightK = 0; // 0 = full day, 1 = full night; eased towards the target each frame
+const clock = new THREE.Clock();
+const NIGHT_SECONDS = 4.5;
+let labelPairs = [];
 
 // ---------------------------------------------------------------------------
 // Scene setup
@@ -179,19 +183,21 @@ const glowTex = (() => {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 })();
-function glow(x, y, z, size, color, opacity = 0.7) {
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+function glow(x, y, z, size, color, opacity = 0.7, th = 0.4 + Math.random() * 0.45) {
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
   sp.position.set(x, y, z);
   sp.scale.set(size, size, 1);
-  sp.visible = night;
+  sp.userData.baseOpacity = opacity;
+  sp.userData.th = th; // the point in the sunset at which this light flicks on
+  sp.visible = false;
   return sp;
 }
-const moon = new THREE.Mesh(new THREE.SphereGeometry(9, 24, 18), new THREE.MeshBasicMaterial({ color: 0xf6f2dc, fog: false }));
+const moon = new THREE.Mesh(new THREE.SphereGeometry(9, 24, 18), new THREE.MeshBasicMaterial({ color: 0xf6f2dc, fog: false, transparent: true, opacity: 0 }));
 moon.position.set(-260, 170, -330);
 moon.visible = false;
 scene.add(moon);
 nightOnly.push(moon);
-const moonGlow = glow(-260, 170, -330, 70, 0xcfd8ff, 0.5);
+const moonGlow = glow(-260, 170, -330, 70, 0xcfd8ff, 0.5, 0.3);
 scene.add(moonGlow);
 nightOnly.push(moonGlow);
 
@@ -241,8 +247,10 @@ const laneMat = new THREE.MeshBasicMaterial({ color: 0xf2f0e6 });
 
 // Window texture: light facade with framed windows, floor bands and a few lit rooms.
 // The material colour tints it, so one texture serves every category.
-// Night version: black facade, only the lit rooms glow.
-function makeNightWindowTexture(seed) {
+// Night version: black facade, only the lit rooms glow. Each building gets
+// its own pattern (sparse, busy, floor bands, columns, checker, top floors
+// working late, lobby only…) and palette so no two towers look alike.
+function makeNightWindowTexture(seed, style = Math.floor(Math.random() * 7), palette = Math.floor(Math.random() * 4)) {
   const c = document.createElement('canvas');
   c.width = 128;
   c.height = 128;
@@ -251,12 +259,30 @@ function makeNightWindowTexture(seed) {
   ctx.fillRect(0, 0, 128, 128);
   let r = seed * 7 + 3;
   const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
+  const palettes = [
+    ['#ffd58a', '#fff3c4', '#ffb86b'], // warm
+    ['#dff4ff', '#ffffff', '#9fd8ff'], // cool office
+    ['#ffd58a', '#9fd8ff', '#ffb3c6'], // mixed homes
+    ['#b5ffd9', '#fff3c4', '#7df9ff'], // teal/green
+  ][palette];
   for (let y = 0; y < 8; y++) {
     for (let x = 0; x < 8; x++) {
       const v = rnd();
-      if (v < 0.38) {
-        ctx.fillStyle = v < 0.26 ? '#ffd58a' : v < 0.33 ? '#fff3c4' : '#9fd8ff';
+      let lit = false;
+      switch (style) {
+        case 0: lit = v < 0.22; break; // sparse
+        case 1: lit = v < 0.6; break; // busy
+        case 2: lit = y % 2 === 0 ? v < 0.75 : v < 0.1; break; // floor bands
+        case 3: lit = x % 2 === 0 ? v < 0.7 : v < 0.12; break; // columns
+        case 4: lit = (x + y) % 2 === 0 ? v < 0.65 : v < 0.08; break; // checker
+        case 5: lit = y < 3 ? v < 0.7 : v < 0.15; break; // top floors working late
+        default: lit = y > 5 ? v < 0.75 : v < 0.12; // lobby and lower floors
+      }
+      if (lit) {
+        ctx.fillStyle = palettes[Math.floor(rnd() * palettes.length)];
+        ctx.globalAlpha = 0.7 + rnd() * 0.3;
         ctx.fillRect(x * 16 + 3, y * 16 + 2, 10, 9);
+        ctx.globalAlpha = 1;
       }
     }
   }
@@ -265,7 +291,7 @@ function makeNightWindowTexture(seed) {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-const nightWindowTextures = [1, 2, 3, 4].map(makeNightWindowTexture);
+
 
 function makeWindowTexture(seed) {
   const c = document.createElement('canvas');
@@ -309,12 +335,12 @@ function facadeMaterial(kind, w, h, d, variant = 0) {
   const hsl = {};
   color.getHSL(hsl);
   color.setHSL(hsl.h + (Math.random() - 0.5) * 0.03, hsl.s, Math.min(0.9, hsl.l + (Math.random() - 0.5) * 0.12));
-  const em = nightWindowTextures[variant % nightWindowTextures.length].clone();
-  em.needsUpdate = true;
+  const em = makeNightWindowTexture(Math.floor(Math.random() * 1e6));
   em.repeat.copy(tex.repeat);
   const mat = new THREE.MeshStandardMaterial({ color, map: tex, roughness: 0.7, metalness: 0.05, emissive: 0xffffff, emissiveMap: em, emissiveIntensity: night ? 0.9 : 0 });
   mat.userData.dayI = 0;
   mat.userData.nightI = 0.9;
+  mat.userData.th = 0.35 + Math.random() * 0.6;
   return mat;
 }
 function trimMaterial(base) {
@@ -370,6 +396,7 @@ function clearBlocks() {
   for (const m of meshes) {
     blocks.remove(m);
     if (m.material.map) m.material.map.dispose();
+    if (m.material.emissiveMap) m.material.emissiveMap.dispose();
     if (m.material !== pavementMat && m.material !== parkMat) m.material.dispose();
   }
   for (const e of extras) blocks.remove(e);
@@ -378,6 +405,7 @@ function clearBlocks() {
   treeSpots = [];
   cars = [];
   people = [];
+  labelPairs = [];
   carMesh = cabMesh = headMesh = tailMesh = peopleBody = peopleHead = null;
   // Drop night-only objects that belonged to the old layout.
   for (let i = nightOnly.length - 1; i >= 0; i--) if (nightOnly[i].parent === blocks || !nightOnly[i].parent) nightOnly.splice(i, 1);
@@ -435,28 +463,76 @@ function layout() {
   applyNight();
 }
 
-// Day / night.
+// Day / night. applyNight blends every light, colour and label for the
+// current nightK; the sun sets through orange before the moon takes over,
+// and each light flicks on at its own point in the dusk.
+const _c1 = new THREE.Color();
+const _c2 = new THREE.Color();
+const lerpHex = (target, a, b, k) => target.setHex(a).lerp(_c2.setHex(b), k);
 function applyNight() {
-  document.body.classList.toggle('night', night);
+  const k = nightK;
+  document.documentElement.style.setProperty('--night', k.toFixed(3));
   $('btn-night').textContent = night ? '☀ Day' : '☾ Night';
-  scene.fog.color.setHex(night ? 0x0c1430 : 0x4fbdbb);
-  hemi.color.setHex(night ? 0x3a4a7a : 0xdff3ef);
-  hemi.groundColor.setHex(night ? 0x0c1020 : 0x6b6558);
-  hemi.intensity = night ? 0.35 : 1.0;
-  key.color.setHex(night ? 0x9fb4ff : 0xffd9a8);
-  key.intensity = night ? 0.55 : 2.6;
-  fill.intensity = night ? 0.15 : 0.45;
-  renderer.toneMappingExposure = night ? 0.95 : 1.1;
-  for (const o of nightOnly) o.visible = night;
+  scene.fog.color.copy(lerpHex(_c1, 0x4fbdbb, 0x0c1430, k));
+  hemi.color.copy(lerpHex(_c1, 0xdff3ef, 0x3a4a7a, k));
+  hemi.groundColor.copy(lerpHex(_c1, 0x6b6558, 0x0c1020, k));
+  hemi.intensity = 1.0 + (0.35 - 1.0) * k;
+  fill.intensity = 0.45 + (0.15 - 0.45) * k;
+  renderer.toneMappingExposure = 1.1 + (0.95 - 1.1) * k;
+  // Sun: warm and high → low orange at the horizon → cool moonlight from the other side.
+  if (k < 0.5) {
+    const u = k / 0.5;
+    key.color.copy(lerpHex(_c1, 0xffd9a8, 0xff7a3d, u));
+    key.intensity = 2.6 + (1.1 - 2.6) * u;
+    key.position.set(120 + (170 - 120) * u, 120 + (14 - 120) * u, 90 + (-40 - 90) * u);
+  } else {
+    const u = (k - 0.5) / 0.5;
+    key.color.copy(lerpHex(_c1, 0xff7a3d, 0x9fb4ff, u));
+    key.intensity = 1.1 + (0.55 - 1.1) * u;
+    key.position.set(170 + (-90 - 170) * u, 14 + (130 - 14) * u, -40 + (-70 + 40) * u);
+  }
+  stars.visible = k > 0.02;
+  stars.material.opacity = (0.78 + 0.2 * Math.sin(clock.elapsedTime * 2.3)) * Math.max(0, (k - 0.3) / 0.7);
+  moon.visible = k > 0.3;
+  moon.material.opacity = Math.max(0, (k - 0.3) / 0.5);
+  const onAt = (th) => (k <= th ? 0 : Math.min(1, (k - th) / 0.06));
+  const flicker = (th) => (k > th && k < th + 0.06 && Math.random() < 0.4 ? 0 : 1);
   const setMat = (mat) => {
-    if (mat && mat.userData && mat.userData.nightI !== undefined) mat.emissiveIntensity = night ? mat.userData.nightI : mat.userData.dayI;
+    if (!mat || !mat.userData || mat.userData.nightI === undefined) return;
+    const th = mat.userData.th === undefined ? 0.5 : mat.userData.th;
+    const on = onAt(th) * flicker(th);
+    mat.emissiveIntensity = mat.userData.dayI + (mat.userData.nightI - mat.userData.dayI) * on;
   };
   for (const m of meshes) setMat(m.material);
   for (const e of extras) setMat(e.material);
-  clouds.children.forEach((c) => c.children.forEach((s) => (s.material.opacity = night ? 0.22 : 0.5)));
+  for (const o of nightOnly) {
+    if (o.userData.th !== undefined) {
+      const on = onAt(o.userData.th) * flicker(o.userData.th);
+      o.visible = on > 0;
+      o.material.opacity = o.userData.baseOpacity * on;
+    } else if (o === headMesh || o === tailMesh) o.visible = k > 0.45;
+  }
+  for (const lp of labelPairs) {
+    lp.day.material.opacity = 1 - k;
+    lp.night.material.opacity = k;
+  }
+  clouds.children.forEach((c) => c.children.forEach((s) => (s.material.opacity = 0.5 + (0.22 - 0.5) * k)));
 }
 function toggleNight() {
   night = !night;
+  $('btn-night').textContent = night ? '☀ Day' : '☾ Night';
+}
+function stepNight(dt) {
+  const target = night ? 1 : 0;
+  if (Math.abs(nightK - target) < 0.0005) {
+    if (nightK !== target) {
+      nightK = target;
+      applyNight();
+    }
+    return;
+  }
+  const step = dt / NIGHT_SECONDS;
+  nightK = nightK < target ? Math.min(target, nightK + step) : Math.max(target, nightK - step);
   applyNight();
 }
 
@@ -695,8 +771,9 @@ function decorate(b, w, h, d) {
       const bbm = new THREE.MeshStandardMaterial({ color: bbc, emissive: bbc, emissiveIntensity: 0.15, roughness: 0.6 });
       bbm.userData.dayI = 0.15;
       bbm.userData.nightI = 1.6;
+      bbm.userData.th = 0.5 + Math.random() * 0.4;
       const bb = piece(boxGeo, bbm, x, top + 1.1, z + d * 0.3, bw, 1.4, 0.12);
-      const bg = glow(x, top + 1.1, z + d * 0.3 + 0.3, bw * 1.6, bbc, 0.45);
+      const bg = glow(x, top + 1.1, z + d * 0.3 + 0.3, bw * 1.6, bbc, 0.45, bbm.userData.th);
       blocks.add(bg);
       extras.push(bg);
       nightOnly.push(bg);
@@ -850,6 +927,7 @@ function neonSign(x, y, z, len, vertical) {
   const m = new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.25, roughness: 0.4 });
   m.userData.dayI = 0.25;
   m.userData.nightI = 2.2;
+  m.userData.th = 0.5 + Math.random() * 0.4;
   if (vertical) {
     piece(boxGeo, signalMat, x, y - len / 2 - 0.1, z - 0.06, 0.7, len + 0.2, 0.1, false);
     piece(boxGeo, m, x, y - len / 2, z, 0.35, len, 0.08, false);
@@ -858,7 +936,7 @@ function neonSign(x, y, z, len, vertical) {
     piece(boxGeo, signalMat, x, y, z - 0.06, len + 0.2, 0.9, 0.1, false);
     piece(boxGeo, m, x, y + 0.2, z, len, 0.4, 0.08, false);
   }
-  const g = glow(x, vertical ? y : y + 0.4, z + 0.4, vertical ? len * 0.9 : len * 1.1, c, 0.5);
+  const g = glow(x, vertical ? y : y + 0.4, z + 0.4, vertical ? len * 0.9 : len * 1.1, c, 0.5, m.userData.th);
   blocks.add(g);
   extras.push(g);
   nightOnly.push(g);
@@ -975,8 +1053,10 @@ function streetLights(x0, z0, w, d) {
   for (const [x, z] of spots) {
     piece(cylGeo, poleMat, x, 1.1, z, 0.1, 3.2, 0.1, false);
     piece(boxGeo, poleMat, x, 4.3, z, 0.12, 0.1, 0.9, false);
-    piece(sphereGeo, lampMat, x, 4.1, z + 0.35, 0.32, 0.22, 0.32, false);
-    const g = glow(x, 4.0, z + 0.35, 5, 0xffc77a, 0.55);
+    const lm = lampMat.clone();
+    lm.userData = { dayI: 0.4, nightI: 2.6, th: 0.38 + Math.random() * 0.25 };
+    piece(sphereGeo, lm, x, 4.1, z + 0.35, 0.32, 0.22, 0.32, false);
+    const g = glow(x, 4.0, z + 0.35, 5, 0xffc77a, 0.55, lm.userData.th);
     blocks.add(g);
     extras.push(g);
     nightOnly.push(g);
@@ -1108,7 +1188,7 @@ function buildStreets(rects) {
   extras.push(carMesh, cabMesh);
   headMesh = new THREE.InstancedMesh(sphereGeo, headMat, cars.length * 2);
   tailMesh = new THREE.InstancedMesh(sphereGeo, tailMat, cars.length * 2);
-  headMesh.visible = tailMesh.visible = night;
+  headMesh.visible = tailMesh.visible = nightK > 0.45;
   blocks.add(headMesh, tailMesh);
   extras.push(headMesh, tailMesh);
   nightOnly.push(headMesh, tailMesh);
@@ -1286,7 +1366,7 @@ function updateLife(dt, t) {
       _p.set(_pt.x + ox, 1.07, _pt.z + oz);
       _m.compose(_p, _q, _sc.set(0.7, 0.3, 0.9));
       cabMesh.setMatrixAt(i, _m);
-      if (night && headMesh) {
+      if (nightK > 0.45 && headMesh) {
         const fx = _pt.dx * dir;
         const fz = _pt.dz * dir;
         const rx = -_pt.dz * dir;
@@ -1303,7 +1383,7 @@ function updateLife(dt, t) {
     });
     carMesh.instanceMatrix.needsUpdate = true;
     cabMesh.instanceMatrix.needsUpdate = true;
-    if (night && headMesh) {
+    if (nightK > 0.45 && headMesh) {
       headMesh.instanceMatrix.needsUpdate = true;
       tailMesh.instanceMatrix.needsUpdate = true;
     }
@@ -1338,31 +1418,47 @@ function updateLife(dt, t) {
   }
 }
 
-function addLabel(item, x, y, z, width, sign = false) {
+function drawLabel(item, sign, nightStyle) {
   const text = item.name.length > 22 ? item.name.slice(0, 20) + '…' : item.name;
   const canvas = document.createElement('canvas');
   canvas.width = 512;
   canvas.height = 128;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = sign ? 'rgba(79,209,197,0.92)' : 'rgba(20,28,40,0.78)';
+  if (nightStyle) ctx.fillStyle = sign ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.92)';
+  else ctx.fillStyle = sign ? 'rgba(79,209,197,0.92)' : 'rgba(20,28,40,0.78)';
   roundRect(ctx, 6, 6, 500, 116, 18);
   ctx.fill();
-  ctx.fillStyle = sign ? '#06201d' : '#ffffff';
+  if (nightStyle && sign) {
+    ctx.strokeStyle = 'rgba(79,209,197,0.9)';
+    ctx.lineWidth = 6;
+    ctx.stroke();
+  }
+  ctx.fillStyle = nightStyle ? '#101828' : sign ? '#06201d' : '#ffffff';
   ctx.font = 'bold 44px -apple-system, Segoe UI, system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText(text, 256, 56);
   ctx.font = '34px -apple-system, Segoe UI, system-ui, sans-serif';
-  ctx.fillStyle = sign ? '#0d3a36' : '#cfe3ec';
+  ctx.fillStyle = nightStyle ? '#4b5566' : sign ? '#0d3a36' : '#cfe3ec';
   ctx.fillText(fmt(item.size), 256, 102);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+  return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+}
+
+function addLabel(item, x, y, z, width, sign = false) {
   const s = Math.max(10, Math.min(24, width * 0.55));
-  sprite.scale.set(s, s / 4, 1);
-  sprite.position.set(x, y + 3, z);
-  sprite.renderOrder = 2;
-  blocks.add(sprite);
-  extras.push(sprite);
+  const pair = {};
+  for (const nightStyle of [false, true]) {
+    const sprite = drawLabel(item, sign, nightStyle);
+    sprite.scale.set(s, s / 4, 1);
+    sprite.position.set(x, y + 3, z);
+    sprite.renderOrder = nightStyle ? 3 : 2;
+    sprite.material.opacity = nightStyle ? nightK : 1 - nightK;
+    blocks.add(sprite);
+    extras.push(sprite);
+    pair[nightStyle ? 'night' : 'day'] = sprite;
+  }
+  labelPairs.push(pair);
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -1544,14 +1640,14 @@ function removeFromTree(item) {
 // ---------------------------------------------------------------------------
 // Render loop
 // ---------------------------------------------------------------------------
-const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(0.1, clock.getDelta());
   const t = clock.elapsedTime;
   controls.update();
   updateLife(dt, t);
-  if (night) stars.material.opacity = 0.78 + 0.2 * Math.sin(t * 2.3);
+  stepNight(dt);
+  if (nightK >= 1) stars.material.opacity = 0.78 + 0.2 * Math.sin(t * 2.3);
   for (const c of clouds.children) {
     c.position.x += c.userData.speed * dt * 1.8;
     if (c.position.x > 280) c.position.x = -280;

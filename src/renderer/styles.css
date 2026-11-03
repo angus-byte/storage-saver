@@ -18,7 +18,10 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif; overflow: hidden; }
-#scene { position: absolute; inset: 0; background: radial-gradient(ellipse 90% 75% at 55% 30%, #94e0da 0%, #62c8c5 45%, #3aa9ab 100%); }
+#sky-day, #sky-night { position: absolute; inset: 0; pointer-events: none; }
+#sky-day { background: radial-gradient(ellipse 90% 75% at 55% 30%, #94e0da 0%, #62c8c5 45%, #3aa9ab 100%); }
+#sky-night { background: radial-gradient(ellipse 90% 75% at 55% 30%, #1c2d66 0%, #0e1838 45%, #070b1c 100%); opacity: var(--night, 0); }
+#scene { position: absolute; inset: 0; }
 #scene canvas { display: block; }
 
 #panel {
@@ -102,5 +105,4 @@ footer { margin-top: auto; }
 #btn-leave { position: absolute; top: 68px; right: 24px; }
 .float {  z-index: 4; background: var(--panel); border-color: var(--accent); color: var(--text); font-weight: 600; padding: 10px 16px; border-radius: 999px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); backdrop-filter: blur(10px); }
 .float:hover { background: var(--accent); color: #06201d; }
-body.night #scene { background: radial-gradient(ellipse 90% 75% at 55% 30%, #1c2d66 0%, #0e1838 45%, #070b1c 100%); }
-body.night { --bg: #070b1c; }
+
