@@ -12,9 +12,11 @@ const api = DEMO
       diskInfo: async () => mockDisk,
       scan: async () => {
         const tree = mockTree();
-        for (let i = 1; i <= 8; i++) {
-          await new Promise((r) => setTimeout(r, 90));
-          progressHandlers.forEach((cb) => cb({ files: i * 61234, bytes: i * 48e9, current: '/Users/angus/Movies/…' }));
+        const kids = tree.children;
+        for (let i = 1; i <= 24; i++) {
+          await new Promise((r) => setTimeout(r, 200));
+          const done = i % 3 === 0 ? kids[i / 3 - 1] : null;
+          progressHandlers.forEach((cb) => cb({ files: i * 20400, bytes: i * 16e9, current: '/Users/angus/Movies/…', done }));
         }
         return { tree, suggestions: mockSuggestions(tree) };
       },
@@ -406,7 +408,8 @@ function clearBlocks() {
   cars = [];
   people = [];
   labelPairs = [];
-  carMesh = cabMesh = headMesh = tailMesh = peopleBody = peopleHead = null;
+  carMesh = cabMesh = headMesh = tailMesh = peopleBody = peopleHead = peopleHat = null;
+  site = null;
   // Drop night-only objects that belonged to the old layout.
   for (let i = nightOnly.length - 1; i >= 0; i--) if (nightOnly[i].parent === blocks || !nightOnly[i].parent) nightOnly.splice(i, 1);
 }
@@ -472,6 +475,7 @@ const lerpHex = (target, a, b, k) => target.setHex(a).lerp(_c2.setHex(b), k);
 function applyNight() {
   const k = nightK;
   document.documentElement.style.setProperty('--night', k.toFixed(3));
+  document.body.classList.toggle('night', k > 0.5);
   $('btn-night').textContent = night ? '☀ Day' : '☾ Night';
   scene.fog.color.copy(lerpHex(_c1, 0x4fbdbb, 0x0c1430, k));
   hemi.color.copy(lerpHex(_c1, 0xdff3ef, 0x3a4a7a, k));
@@ -1038,6 +1042,7 @@ const headMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xff
 const tailMat = new THREE.MeshStandardMaterial({ color: 0xff3b3b, emissive: 0xff2222, emissiveIntensity: 2.0 });
 let peopleBody = null;
 let peopleHead = null;
+let peopleHat = null;
 
 function streetLights(x0, z0, w, d) {
   const inset = 0.45;
@@ -1136,7 +1141,7 @@ function buildPark(x0, z0, w, d) {
   return keepOut;
 }
 
-function buildStreets(rects) {
+function buildStreets(rects, opts = {}) {
   // Internal streets lie along the right and bottom edges of each suburb.
   // Merge collinear pieces into continuous segments.
   const vertical = new Map();
@@ -1171,7 +1176,7 @@ function buildStreets(rects) {
       crosswalk(st, sp);
       roadSign(st, sp);
     }
-    parkedCars(st);
+    if (!opts.site) parkedCars(st);
   }
 
   // Ring road around the whole city.
@@ -1184,7 +1189,8 @@ function buildStreets(rects) {
 
   // Cars.
   cars = [];
-  const n = Math.min(48, 8 + Math.floor(paths.reduce((s, p) => s + p.length, 0) / 22));
+  let n = Math.min(48, 8 + Math.floor(paths.reduce((s, p) => s + p.length, 0) / 22));
+  if (opts.site) n = Math.ceil(n / 3);
   for (let i = 0; i < n; i++) {
     const pth = i < 10 ? ring : paths[1 + Math.floor(Math.random() * (paths.length - 1))] || ring;
     cars.push({ path: pth, s: Math.random() * pth.length, lane: Math.random() < 0.5 ? 1 : -1, speed: 5 + Math.random() * 4 });
@@ -1318,7 +1324,7 @@ function pointAt(pth, s, out) {
   return out;
 }
 
-function buildPeople(rects) {
+function buildPeople(rects, opts = {}) {
   people = [];
   for (const r of rects) {
     const x0 = r.x + STREET / 2 + 1.1;
@@ -1331,14 +1337,24 @@ function buildPeople(rects) {
     const n = Math.min(14, Math.max(2, Math.floor(loop.length / 9)));
     for (let i = 0; i < n; i++) people.push({ path: loop, s: Math.random() * loop.length, dir: Math.random() < 0.5 ? 1 : -1, speed: 1 + Math.random() * 0.8, phase: Math.random() * 6 });
   }
+  for (const loop of opts.loops || []) {
+    loop.length = pathLength(loop);
+    const n = Math.max(2, Math.floor(loop.length / 7));
+    for (let i = 0; i < n; i++) people.push({ path: loop, s: Math.random() * loop.length, dir: Math.random() < 0.5 ? 1 : -1, speed: 0.8 + Math.random() * 0.7, phase: Math.random() * 6 });
+  }
   if (!people.length) return;
   peopleBody = new THREE.InstancedMesh(cylGeo, personMat, people.length);
   peopleHead = new THREE.InstancedMesh(sphereGeo, skinMat, people.length);
   const col = new THREE.Color();
-  people.forEach((_, i) => peopleBody.setColorAt(i, col.setHSL(Math.random(), 0.55, 0.5)));
+  people.forEach((_, i) => peopleBody.setColorAt(i, opts.workers ? col.setHSL(Math.random() < 0.5 ? 0.08 : 0.14, 1, 0.52) : col.setHSL(Math.random(), 0.55, 0.5)));
   peopleBody.castShadow = true;
   blocks.add(peopleBody, peopleHead);
   extras.push(peopleBody, peopleHead);
+  if (opts.workers) {
+    peopleHat = new THREE.InstancedMesh(sphereGeo, hardHatMat, people.length);
+    blocks.add(peopleHat);
+    extras.push(peopleHat);
+  }
 }
 
 const _pt = { x: 0, z: 0, dx: 0, dz: 0 };
@@ -1411,9 +1427,15 @@ function updateLife(dt, t) {
       _p.set(_pt.x, 1.85 + bob, _pt.z);
       _m.compose(_p, _q, _sc.set(0.3, 0.3, 0.3));
       peopleHead.setMatrixAt(i, _m);
+      if (peopleHat) {
+        _p.set(_pt.x, 1.93 + bob, _pt.z);
+        _m.compose(_p, _q, _sc.set(0.36, 0.22, 0.36));
+        peopleHat.setMatrixAt(i, _m);
+      }
     });
     peopleBody.instanceMatrix.needsUpdate = true;
     peopleHead.instanceMatrix.needsUpdate = true;
+    if (peopleHat) peopleHat.instanceMatrix.needsUpdate = true;
   }
   // Traffic signals follow the global phase.
   for (const ex of extras) {
@@ -1427,6 +1449,425 @@ function updateLife(dt, t) {
       ex.position.y = go ? 3.7 : 4.15;
     }
   }
+}
+
+
+// ---------------------------------------------------------------------------
+// Construction site: shown while a scan runs. The roads are already laid and
+// being patched by road crews; the lots are dirt with cranes, scaffolds and
+// workers, and the scaffolds climb as the scan finds more files.
+// ---------------------------------------------------------------------------
+let site = null;
+const hardHatMat = new THREE.MeshStandardMaterial({ color: 0xffd23f, roughness: 0.6 });
+const craneMat = new THREE.MeshStandardMaterial({ color: 0xf4a300, roughness: 0.6, metalness: 0.3 });
+const scaffoldMat = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, roughness: 0.5, metalness: 0.6 });
+const plankMat = new THREE.MeshStandardMaterial({ color: 0xc9a46a, roughness: 0.95 });
+const concreteMat = new THREE.MeshStandardMaterial({ color: 0xb9b5ad, roughness: 0.95 });
+const gravelMat = new THREE.MeshStandardMaterial({ color: 0xa79d8f, roughness: 1 });
+const coneMat = new THREE.MeshStandardMaterial({ color: 0xff6a00, roughness: 0.7 });
+const stripeRedMat = new THREE.MeshStandardMaterial({ color: 0xe03a2f, roughness: 0.7 });
+const fenceMat = new THREE.MeshStandardMaterial({ color: 0xd8dde3, roughness: 0.6, metalness: 0.4, transparent: true, opacity: 0.55 });
+const machineMat = new THREE.MeshStandardMaterial({ color: 0xffb000, roughness: 0.55, metalness: 0.3 });
+const trackMat = new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.9 });
+const brickMat = new THREE.MeshStandardMaterial({ color: 0xb5553c, roughness: 0.9 });
+const beamMat = new THREE.MeshStandardMaterial({ color: 0x6d7580, roughness: 0.4, metalness: 0.7 });
+const beaconMat = new THREE.MeshStandardMaterial({ color: 0xffb000, emissive: 0xff9500, emissiveIntensity: 1.6 });
+const patchMat = new THREE.MeshStandardMaterial({ color: 0x3a3e46, roughness: 1 });
+
+function buildSite() {
+  clearBlocks();
+  closeMenu();
+  site = { cranes: [], scaffolds: [], machines: [], beacons: [], progress: 0, shown: 0 };
+  // Provisional plan: the same six lots every time, so the site is familiar.
+  const plan = [34, 26, 18, 14, 10, 8].map((size, i) => ({ size, i }));
+  const rects = squarify(plan, { x: -BASE_W / 2, y: -BASE_D / 2, w: BASE_W, h: BASE_D });
+  const loops = [];
+  for (const r of rects) siteLot(r, loops);
+  buildStreets(rects, { site: true });
+  roadWorks();
+  buildPeople(rects, { workers: true, loops });
+  placeTrees();
+  addLabel({ name: 'Building your city', sub: 'surveying your files…' }, 0, 8, 0, 40, true);
+  applyNight();
+}
+
+function siteLot(r, loops) {
+  const x0 = r.x + STREET / 2;
+  const z0 = r.y + STREET / 2;
+  const w = r.w - STREET;
+  const d = r.h - STREET;
+  if (w < 4 || d < 4) return;
+  // Pavement ring with a gravel yard inside.
+  piece(boxGeo, pavementMat, x0 + w / 2, 0.6, z0 + d / 2, w, 0.5, d, false);
+  piece(boxGeo, gravelMat, x0 + w / 2, 0.6, z0 + d / 2, w - SIDEWALK * 2, 0.55, d - SIDEWALK * 2, false);
+  streetLights(x0, z0, w, d);
+  trafficSignals(x0, z0, w, d);
+  // Hoarding fence around the yard.
+  const fx0 = x0 + SIDEWALK;
+  const fz0 = z0 + SIDEWALK;
+  const fw = w - SIDEWALK * 2;
+  const fd = d - SIDEWALK * 2;
+  const gate = fx0 + fw * 0.5;
+  for (let x = fx0; x <= fx0 + fw + 0.01; x += 2.5) {
+    piece(cylGeo, poleMat, x, 1.15, fz0, 0.08, 1.4, 0.08, false);
+    piece(cylGeo, poleMat, x, 1.15, fz0 + fd, 0.08, 1.4, 0.08, false);
+  }
+  for (let z = fz0; z <= fz0 + fd + 0.01; z += 2.5) {
+    piece(cylGeo, poleMat, fx0, 1.15, z, 0.08, 1.4, 0.08, false);
+    piece(cylGeo, poleMat, fx0 + fw, 1.15, z, 0.08, 1.4, 0.08, false);
+  }
+  piece(boxGeo, fenceMat, fx0 + fw / 2, 1.2, fz0, fw, 1.2, 0.05, false);
+  // Front fence leaves a gate open for trucks.
+  piece(boxGeo, fenceMat, (fx0 + gate - 2) / 2, 1.2, fz0 + fd, gate - 2 - fx0, 1.2, 0.05, false);
+  piece(boxGeo, fenceMat, (gate + 2 + fx0 + fw) / 2, 1.2, fz0 + fd, fx0 + fw - gate - 2, 1.2, 0.05, false);
+  piece(boxGeo, fenceMat, fx0, 1.2, fz0 + fd / 2, 0.05, 1.2, fd, false);
+  piece(boxGeo, fenceMat, fx0 + fw, 1.2, fz0 + fd / 2, 0.05, 1.2, fd, false);
+  // Inner lots: a few foundations, the biggest with a crane.
+  const inner = { x: fx0 + 1.2, y: fz0 + 1.2, w: fw - 2.4, h: fd - 2.4 };
+  if (inner.w < 4 || inner.h < 4) return;
+  const count = Math.max(1, Math.min(4, Math.floor((inner.w * inner.h) / 120)));
+  const lots = [];
+  for (let i = 0; i < count; i++) lots.push({ size: 1 + Math.random() * 2.5 });
+  const lotRects = squarify(lots, inner);
+  lotRects.forEach((lr, i) => {
+    const lw = Math.max(1.5, lr.w - 1.6);
+    const ld = Math.max(1.5, lr.h - 1.6);
+    const cx = lr.x + lr.w / 2;
+    const cz = lr.y + lr.h / 2;
+    const sw = Math.min(lw, ld) * 0.8;
+    // Foundation slab and a scaffold that grows with the scan.
+    piece(boxGeo, concreteMat, cx, 1.15, cz, sw + 0.8, 0.25, sw + 0.8, false);
+    const floors = 4 + Math.floor(Math.random() * 7);
+    const sc = { floors: [], cx, cz, sw, start: Math.random() * 0.35 };
+    for (let f = 0; f < floors; f++) {
+      const y = 1.4 + f * 2.2;
+      const parts = [];
+      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) parts.push(piece(cylGeo, scaffoldMat, cx + (sx * sw) / 2, y, cz + (sz * sw) / 2, 0.1, 2.2, 0.1, false));
+      parts.push(piece(boxGeo, scaffoldMat, cx, y + 2.1, cz - sw / 2, sw, 0.08, 0.08, false));
+      parts.push(piece(boxGeo, scaffoldMat, cx, y + 2.1, cz + sw / 2, sw, 0.08, 0.08, false));
+      parts.push(piece(boxGeo, scaffoldMat, cx - sw / 2, y + 2.1, cz, 0.08, 0.08, sw, false));
+      parts.push(piece(boxGeo, scaffoldMat, cx + sw / 2, y + 2.1, cz, 0.08, 0.08, sw, false));
+      parts.push(piece(boxGeo, f % 2 ? plankMat : concreteMat, cx, y + 2.14, cz, sw - 0.1, 0.12, sw - 0.1, false));
+      for (const m of parts) {
+        m.userData.finalScale = [m.scale.x, m.scale.y, m.scale.z];
+        m.scale.set(0, 0, 0);
+        m.userData.pop = 0;
+      }
+      sc.floors.push(parts);
+    }
+    site.scaffolds.push(sc);
+    // A worker path around the slab.
+    const m = sw / 2 + 1.0;
+    loops.push({ loop: true, points: [[cx - m, cz - m], [cx + m, cz - m], [cx + m, cz + m], [cx - m, cz + m]] });
+    if (i === 0 && lr.w > 7 && lr.h > 7) crane(lr.x + 1.0, lr.y + 1.0, 8 + floors * 2.2);
+    else if (Math.random() < 0.6) excavator(lr.x + lr.w - 1.6, lr.y + lr.h - 1.6);
+    // Materials: dirt pile, pallet of bricks, steel beams.
+    piece(coneGeo, soilMat, lr.x + lr.w - 1.2, 1.15, lr.y + 1.2, 2.2, 1.1, 2.2);
+    piece(boxGeo, plankMat, lr.x + 1.2, 1.15, lr.y + lr.h - 1.0, 1.4, 0.12, 1.1, false);
+    piece(boxGeo, brickMat, lr.x + 1.2, 1.27, lr.y + lr.h - 1.0, 1.2, 0.8, 0.9);
+    piece(boxGeo, beamMat, lr.x + lr.w / 2, 1.15, lr.y + lr.h - 0.7, Math.min(5, lr.w - 2), 0.3, 0.4);
+  });
+  // Site office (portable cabin) and a mixer by the gate.
+  piece(boxGeo, whiteMat, gate + 3.2, 1.15, fz0 + fd - 1.6, 3.2, 1.6, 2.0);
+  piece(boxGeo, signalMat, gate + 3.2, 2.75, fz0 + fd - 1.6, 3.4, 0.12, 2.2, false);
+  piece(boxGeo, glassMat, gate + 3.2, 1.7, fz0 + fd - 0.58, 2.0, 0.6, 0.04, false);
+  mixer(gate - 2.6, fz0 + fd - 1.8);
+  // Beacons on the gate posts.
+  for (const gx of [gate - 2, gate + 2]) {
+    piece(cylGeo, stripeRedMat, gx, 1.15, fz0 + fd, 0.14, 1.5, 0.14, false);
+    const b = piece(sphereGeo, beaconMat.clone(), gx, 2.75, fz0 + fd, 0.3, 0.3, 0.3, false);
+    b.userData.blink = Math.random() * 2;
+    site.beacons.push(b);
+  }
+}
+
+function crane(x, z, h) {
+  // Tower crane: lattice mast, slewing jib with trolley and a swinging load.
+  const base = 1.15;
+  piece(boxGeo, concreteMat, x, base, z, 2.6, 0.4, 2.6, false);
+  piece(boxGeo, craneMat, x, base + 0.4, z, 0.7, h, 0.7);
+  for (let y = base + 1.5; y < base + h; y += 1.6) {
+    piece(boxGeo, craneMat, x, y, z, 0.95, 0.08, 0.08, false);
+    piece(boxGeo, craneMat, x, y, z, 0.08, 0.08, 0.95, false);
+  }
+  const top = base + 0.4 + h;
+  const pivot = new THREE.Group();
+  pivot.position.set(x, top, z);
+  blocks.add(pivot);
+  extras.push(pivot);
+  const add = (geo, mat, px, py, pz, sx, sy, sz) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(px, py, pz);
+    m.scale.set(sx, sy, sz);
+    m.castShadow = true;
+    pivot.add(m);
+    return m;
+  };
+  add(boxGeo, craneMat, 0, 0, 0, 0.9, 1.4, 0.9); // slewing unit
+  add(boxGeo, glassMat, 0.55, 0.3, 0, 0.6, 0.7, 0.7); // cab
+  const jib = 10 + h * 0.4;
+  add(boxGeo, craneMat, jib / 2, 1.4, 0, jib, 0.35, 0.35); // jib
+  add(boxGeo, craneMat, -jib * 0.3, 1.4, 0, jib * 0.6, 0.35, 0.35); // counter-jib
+  add(boxGeo, concreteMat, -jib * 0.5, 1.2, 0, 1.2, 0.9, 1.0); // counterweight
+  add(boxGeo, craneMat, 0, 1.75, 0, 0.3, 2.4, 0.3); // apex
+  // Pendant lines from the apex to the jib and counter-jib tips.
+  for (const tipX of [jib * 0.92, -jib * 0.55]) {
+    const dx = tipX;
+    const dy = 1.6 - 4.15;
+    const tie = add(cylGeo, beamMat, 0, 4.15, 0, 0.05, Math.hypot(dx, dy), 0.05);
+    tie.rotation.z = Math.atan2(-dx, dy);
+  }
+  const trolley = new THREE.Group();
+  trolley.position.set(jib * 0.6, 1.4, 0);
+  pivot.add(trolley);
+  const cable = add(cylGeo, trackMat, 0, 0, 0, 0.04, 1, 0.04);
+  trolley.add(cable);
+  cable.position.set(0, 0, 0);
+  const hook = new THREE.Group();
+  trolley.add(hook);
+  const hookBlock = new THREE.Mesh(boxGeo, trackMat);
+  hookBlock.scale.set(0.3, 0.4, 0.3);
+  hook.add(hookBlock);
+  const load = new THREE.Mesh(boxGeo, Math.random() < 0.5 ? beamMat : brickMat);
+  load.scale.set(Math.random() < 0.5 ? 3.5 : 1.2, 0.5, 0.9);
+  load.position.y = -0.9;
+  load.castShadow = true;
+  hook.add(load);
+  site.cranes.push({ pivot, trolley, cable, hook, jib, base: Math.random() * Math.PI * 2, phase: Math.random() * 10, speed: 0.25 + Math.random() * 0.2 });
+}
+
+function excavator(x, z) {
+  const g = new THREE.Group();
+  g.position.set(x, 1.15, z);
+  g.rotation.y = Math.random() * Math.PI * 2;
+  blocks.add(g);
+  extras.push(g);
+  const add = (geo, mat, px, py, pz, sx, sy, sz, parent = g) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(px, py, pz);
+    m.scale.set(sx, sy, sz);
+    m.castShadow = true;
+    parent.add(m);
+    return m;
+  };
+  add(boxGeo, trackMat, 0, 0, -0.8, 2.4, 0.5, 0.6);
+  add(boxGeo, trackMat, 0, 0, 0.8, 2.4, 0.5, 0.6);
+  const body = new THREE.Group();
+  body.position.y = 0.55;
+  g.add(body);
+  add(boxGeo, machineMat, -0.2, 0, 0, 1.9, 0.9, 1.7, body);
+  add(boxGeo, glassMat, 0.35, 0.9, 0.45, 0.9, 0.8, 0.8, body);
+  const boom = new THREE.Group();
+  boom.position.set(0.9, 0.8, -0.2);
+  body.add(boom);
+  const arm1 = add(boxGeo, machineMat, 0, 0, 0, 0.3, 2.8, 0.3, boom);
+  arm1.rotation.z = -0.9;
+  const elbow = new THREE.Group();
+  elbow.position.set(2.8 * Math.sin(0.9), 2.8 * Math.cos(0.9), 0);
+  boom.add(elbow);
+  const arm2 = add(boxGeo, machineMat, 0, 0, 0, 0.25, 2.2, 0.25, elbow);
+  arm2.rotation.z = 2.3;
+  const bucket = add(boxGeo, trackMat, 2.2 * Math.sin(2.3) * -1, -2.2 * Math.cos(2.3), 0, 0.7, 0.5, 0.7, elbow);
+  bucket.position.set(-2.2 * Math.sin(2.3), -2.2 * Math.cos(2.3) * 1, 0);
+  site.machines.push({ kind: 'excavator', body, boom, elbow, phase: Math.random() * 10 });
+}
+
+function mixer(x, z) {
+  const g = new THREE.Group();
+  g.position.set(x, 1.15, z);
+  g.rotation.y = Math.PI / 2 + (Math.random() - 0.5) * 0.4;
+  blocks.add(g);
+  extras.push(g);
+  const add = (geo, mat, px, py, pz, sx, sy, sz, parent = g) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(px, py, pz);
+    m.scale.set(sx, sy, sz);
+    m.castShadow = true;
+    parent.add(m);
+    return m;
+  };
+  add(boxGeo, trackMat, 0, 0, 0, 3.4, 0.5, 1.4);
+  add(boxGeo, whiteMat, 1.1, 0.5, 0, 1.1, 1.0, 1.3);
+  add(boxGeo, glassMat, 1.62, 0.9, 0, 0.06, 0.5, 1.1);
+  const drum = add(cylGeo, stripeRedMat, -0.5, 1.1, 0, 1.2, 2.0, 1.2);
+  drum.rotation.z = Math.PI / 2 + 0.35;
+  drum.position.set(0.35, 0.9, 0);
+  for (let i = 0; i < 3; i++) {
+    const w = add(cylGeo, trackMat, -0.9 + i * 0.9, 0.3, 0, 0.55, 1.5, 0.55);
+    w.rotation.x = Math.PI / 2;
+    w.position.set(-1.0 + i * 1.0, 0.28, -0.75);
+  }
+  site.machines.push({ kind: 'mixer', drum, phase: Math.random() * 10 });
+}
+
+function roadWorks() {
+  // One works zone per internal street plus one on the ring road: a closed
+  // lane of cones, striped barriers, a fresh asphalt patch, a warning sign,
+  // a flagger, and a roller rolling back and forth over the patch.
+  const zones = [];
+  for (const st of streets) {
+    const len = st.to - st.from;
+    if (len < 18) continue;
+    const mid = (st.from + st.to) / 2 + (Math.random() - 0.5) * len * 0.3;
+    if ((st.stops || []).some((sp) => Math.abs(sp - mid) < 7)) continue;
+    zones.push({ axis: st.axis, at: st.at, pos: mid, side: Math.random() < 0.5 ? 1 : -1 });
+  }
+  zones.push({ axis: 'x', at: BASE_D / 2 - 0.25, pos: -BASE_W * 0.25, side: -1 });
+  zones.push({ axis: 'z', at: -BASE_W / 2 + 0.25, pos: BASE_D * 0.1, side: 1 });
+  for (const zn of zones) {
+    const L = 8;
+    const P = (along, across, y = 1.1) => (zn.axis === 'z' ? [zn.at + across, y, zn.pos + along] : [zn.pos + along, y, zn.at + across]);
+    const lane = zn.side * 1.2;
+    const sz = (a, b) => (zn.axis === 'z' ? [b, a] : [a, b]);
+    // Patch of new asphalt and an open trench beside it.
+    let [px, py, pz] = P(0, lane, 0.63);
+    let [sx, szz] = sz(L - 1, 2.0);
+    piece(boxGeo, patchMat, px, py, pz, sx, 0.03, szz, false);
+    [px, py, pz] = P(-L / 2 + 1.5, lane, 0.64);
+    [sx, szz] = sz(2.2, 1.2);
+    piece(boxGeo, soilMat, px, py, pz, sx, 0.02, szz, false);
+    // Cones along the lane edge and across both ends.
+    for (let a = -L / 2; a <= L / 2; a += 1.6) {
+      [px, py, pz] = P(a, zn.side * 0.25);
+      piece(coneGeo, coneMat, px, py, pz, 0.45, 0.7, 0.45, false);
+      piece(cylGeo, whiteMat, px, py + 0.35, pz, 0.34, 0.1, 0.34, false);
+    }
+    for (const end of [-L / 2, L / 2]) {
+      for (let c = 0.9; c <= 2.3; c += 0.7) {
+        [px, py, pz] = P(end, zn.side * c);
+        piece(coneGeo, coneMat, px, py, pz, 0.45, 0.7, 0.45, false);
+      }
+      // Striped barrier with a blinking lamp.
+      [px, py, pz] = P(end + (end < 0 ? -1.2 : 1.2), lane);
+      [sx, szz] = sz(0.15, 2.2);
+      piece(boxGeo, stripeRedMat, px, py, pz, sx, 1.0, szz, false);
+      [sx, szz] = sz(0.17, 2.2);
+      piece(boxGeo, whiteMat, px, py + 0.3, pz, sx, 0.25, szz, false);
+      piece(boxGeo, whiteMat, px, py + 0.75, pz, sx, 0.2, szz, false);
+      const b = piece(sphereGeo, beaconMat.clone(), px, py + 1.15, pz, 0.26, 0.26, 0.26, false);
+      b.userData.blink = Math.random() * 2;
+      site.beacons.push(b);
+    }
+    // Warning sign on the pavement before the zone.
+    [px, py, pz] = P(-L / 2 - 4, zn.side * (STREET / 2 + 0.5));
+    piece(cylGeo, poleMat, px, py, pz, 0.06, 2.2, 0.06, false);
+    const dia = piece(boxGeo, signMats.yellow, px, py + 2.1, pz, 0.9, 0.9, 0.06, false);
+    dia.rotation.z = Math.PI / 4;
+    if (zn.axis === 'x') dia.rotation.y = Math.PI / 2;
+    // Flagger holding a stop paddle.
+    [px, py, pz] = P(L / 2 + 2.2, zn.side * 2.0);
+    piece(cylGeo, hardHatMat, px, py, pz, 0.32, 0.7, 0.32, false);
+    piece(sphereGeo, skinMat, px, py + 0.85, pz, 0.3, 0.3, 0.3, false);
+    piece(sphereGeo, hardHatMat, px, py + 0.93, pz, 0.36, 0.22, 0.36, false);
+    piece(cylGeo, poleMat, px + 0.3, py, pz, 0.04, 1.6, 0.04, false);
+    piece(octGeo, signMats.stop, px + 0.3, py + 1.7, pz, 0.5, 0.5, 0.05, false);
+    // Roller.
+    const g = new THREE.Group();
+    blocks.add(g);
+    extras.push(g);
+    const add = (geo, mat, x, y, z, sx, sy, sz2) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      m.scale.set(sx, sy, sz2);
+      m.castShadow = true;
+      g.add(m);
+      return m;
+    };
+    add(boxGeo, machineMat, 0, 0.5, 0, 1.6, 0.6, 1.2);
+    add(boxGeo, glassMat, -0.2, 1.1, 0, 0.9, 0.7, 1.0);
+    add(boxGeo, machineMat, -0.2, 1.8, 0, 1.1, 0.08, 1.2);
+    const drumF = add(cylGeo, beamMat, 1.3, 0.55, 0, 1.0, 1.3, 1.0);
+    drumF.rotation.x = Math.PI / 2;
+    drumF.position.set(1.3, 0.55, -0.65);
+    const drumB = add(cylGeo, trackMat, -1.1, 0.5, 0, 0.9, 1.3, 0.9);
+    drumB.rotation.x = Math.PI / 2;
+    drumB.position.set(-1.1, 0.5, -0.65);
+    const beacon = add(sphereGeo, beaconMat.clone(), -0.2, 1.95, 0, 0.22, 0.22, 0.22);
+    beacon.userData.blink = Math.random() * 2;
+    site.beacons.push(beacon);
+    site.machines.push({ kind: 'roller', g, zone: zn, lane, L: L - 3, phase: Math.random() * 10 });
+  }
+}
+
+function updateSite(dt, t) {
+  // Scaffolds climb with the scan; each floor pops on in turn.
+  const prog = site.progress;
+  for (const sc of site.scaffolds) {
+    const want = Math.floor(Math.max(0, (prog - sc.start) / (1 - sc.start)) * (sc.floors.length + 1));
+    sc.floors.forEach((parts, f) => {
+      if (f >= want) return;
+      for (const m of parts) {
+        if (m.userData.pop >= 1) continue;
+        m.userData.pop = Math.min(1, m.userData.pop + dt * 3.5);
+        const k = easeOutBack(m.userData.pop);
+        const fs = m.userData.finalScale;
+        m.scale.set(fs[0] * k, fs[1] * k, fs[2] * k);
+      }
+    });
+  }
+  for (const c of site.cranes) {
+    c.pivot.rotation.y = c.base + Math.sin(t * c.speed + c.phase) * 1.3;
+    c.trolley.position.x = c.jib * (0.55 + 0.3 * Math.sin(t * 0.37 + c.phase));
+    const drop = 4 + (c.jib * 0.6) * (0.5 + 0.5 * Math.sin(t * 0.5 + c.phase * 1.7));
+    c.cable.scale.y = drop;
+    c.cable.rotation.x = Math.PI; // hangs down from the trolley
+    c.hook.position.y = -drop;
+    c.hook.rotation.y = Math.sin(t * 0.8 + c.phase) * 0.4;
+  }
+  for (const m of site.machines) {
+    if (m.kind === 'excavator') {
+      m.body.rotation.y = Math.sin(t * 0.6 + m.phase) * 0.7;
+      m.boom.rotation.z = Math.sin(t * 1.1 + m.phase) * 0.35;
+      m.elbow.rotation.z = Math.sin(t * 1.1 + m.phase + 1) * 0.5;
+    } else if (m.kind === 'mixer') {
+      m.drum.rotation.y += dt * 1.5;
+    } else if (m.kind === 'roller') {
+      const a = Math.sin(t * 0.45 + m.phase) * (m.L / 2);
+      const dir = Math.cos(t * 0.45 + m.phase) >= 0 ? 1 : -1;
+      const zn = m.zone;
+      if (zn.axis === 'z') {
+        m.g.position.set(zn.at + m.lane, 0.62, zn.pos + a);
+        m.g.rotation.y = dir > 0 ? 0 : Math.PI;
+      } else {
+        m.g.position.set(zn.pos + a, 0.62, zn.at + m.lane);
+        m.g.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+      }
+    }
+  }
+  for (const b of site.beacons) {
+    const on = (t * 2 + b.userData.blink) % 1 < 0.5;
+    b.material.emissiveIntensity = on ? 2.2 : 0.2;
+  }
+}
+
+// A top-level item finished scanning: swap the next scaffold for its building.
+function siteBuilding(item) {
+  if (!site) return;
+  const free = site.scaffolds.filter((x) => !x.used);
+  const sc = free[Math.floor(Math.random() * free.length)];
+  if (!sc) return;
+  sc.used = true;
+  for (const parts of sc.floors) for (const m of parts) m.visible = false;
+  site.maxSeen = Math.max(site.maxSeen || 1, item.size);
+  maxSizeInView = site.maxSeen;
+  const side = sc.sw + 0.8;
+  const r = { x: sc.cx - side / 2, y: sc.cz - side / 2, w: side, h: side, item: { size: side * side, item } };
+  const h = placeBuilding(r, 1, 0);
+  addLabel(item, sc.cx, 1.1 + h + 2, sc.cz, Math.min(side + 8, 24));
+  if (labelPairs.length) {
+    const lp = labelPairs[labelPairs.length - 1];
+    lp.day.material.opacity = 1 - nightK;
+    lp.night.material.opacity = nightK;
+  }
+}
+
+function setScanProgress(p) {
+  if (!site) return;
+  if (p.done) siteBuilding(p.done);
+  // Unknown total, so ease towards 1 as files and bytes pile up.
+  const byFiles = 1 - Math.exp(-(p.files || 0) / 220000);
+  const byBytes = 1 - Math.exp(-(p.bytes || 0) / 250e9);
+  site.progress = Math.max(site.progress, Math.min(0.97, Math.max(byFiles, byBytes)));
 }
 
 function drawLabel(item, sign, nightStyle) {
@@ -1450,7 +1891,7 @@ function drawLabel(item, sign, nightStyle) {
   ctx.fillText(text, 256, 56);
   ctx.font = '34px -apple-system, Segoe UI, system-ui, sans-serif';
   ctx.fillStyle = nightStyle ? '#4b5566' : sign ? '#0d3a36' : '#cfe3ec';
-  ctx.fillText(fmt(item.size), 256, 102);
+  ctx.fillText(item.sub || fmt(item.size), 256, 102);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
@@ -1557,11 +1998,14 @@ function closeMenu() {
 function openMenu(item, x, y) {
   menuItem = item;
   const canDemolish = item.path && !item.aggregate && !item.virtual;
-  menu.innerHTML = `<div class="menu-title"><b>${esc(item.name)}</b><span>${fmt(item.size)} · ${KIND_LABELS[item.kind] || item.kind}</span></div>` +
-    (item.isDir && !item.virtual ? `<button data-act="open">Walk in</button>` : '') +
-    (state.path.length ? `<button data-act="leave">← Leave ${esc(currentNode().name)}</button>` : '') +
-    (item.path && !item.virtual ? `<button data-act="reveal">Show in Finder / Explorer</button>` : '') +
-    (canDemolish ? `<button data-act="demolish" class="demolish">Demolish (move to Trash)</button>` : '') +
+  const color = '#' + (KIND_COLORS[item.kind] || KIND_COLORS.other).toString(16).padStart(6, '0');
+  const where = item.suburb ? 'Suburb' : SUBURB_NAMES[item.kind] || KIND_LABELS[item.kind] || item.kind;
+  const row = (act, icon, label, sub, cls = '') => `<button data-act="${act}" class="${cls}"><i>${icon}</i><span class="lbl">${label}<small>${sub}</small></span></button>`;
+  menu.innerHTML = `<div class="menu-head" style="--kind:${color}"><span class="swatch"></span><div><b>${esc(item.name)}</b><span>${fmt(item.size)}${item.files ? ` · ${item.files.toLocaleString()} files` : ''} · ${esc(where)}</span></div></div>` +
+    (item.isDir && !item.virtual ? row('open', '🚶', 'Walk in', 'see what is inside') : '') +
+    (state.path.length ? row('leave', '↩', `Leave ${esc(currentNode().name)}`, 'back out to the street') : '') +
+    (item.path && !item.virtual ? row('reveal', '📍', 'Show in Finder', 'open its folder') : '') +
+    (canDemolish ? row('demolish', '🧨', 'Demolish', 'moves it to the Trash', 'demolish') : '') +
     (!canDemolish ? `<div class="menu-note">${item.suburb ? 'A suburb' : item.virtual ? 'Not a file' : 'Lots of small files'}: walk in to pick what to demolish.</div>` : '');
   menu.hidden = false;
   const mw = menu.offsetWidth;
@@ -1571,7 +2015,8 @@ function openMenu(item, x, y) {
   tooltip.hidden = true;
 }
 menu.addEventListener('click', async (e) => {
-  const act = e.target.dataset && e.target.dataset.act;
+  const btn = e.target.closest('[data-act]');
+  const act = btn && btn.dataset.act;
   if (!act || !menuItem) return;
   const item = menuItem;
   if (act === 'open') {
@@ -1586,7 +2031,7 @@ menu.addEventListener('click', async (e) => {
     api.reveal(item.path);
     closeMenu();
   } else if (act === 'demolish') {
-    menu.innerHTML = `<div class="menu-title"><b>Demolish ${esc(item.name)}?</b><span>${fmt(item.size)} goes to the Trash. You can restore it from there.</span></div><button data-act="confirm" class="demolish">Yes, demolish</button><button data-act="cancel">Cancel</button>`;
+    menu.innerHTML = `<div class="menu-head" style="--kind:#e5484d"><span class="swatch"></span><div><b>Demolish ${esc(item.name)}?</b><span>${fmt(item.size)} goes to the Trash. You can restore it from there.</span></div></div><button data-act="confirm" class="confirm">🧨 Yes, demolish</button><button data-act="cancel" class="cancel">Keep it</button>`;
   } else if (act === 'cancel') {
     closeMenu();
   } else if (act === 'confirm') {
@@ -1657,6 +2102,7 @@ function animate() {
   const t = clock.elapsedTime;
   controls.update();
   updateLife(dt, t);
+  if (site) updateSite(dt, t);
   stepNight(dt);
   if (nightK >= 1) stars.material.opacity = 0.78 + 0.2 * Math.sin(t * 2.3);
   for (const c of clouds.children) {
@@ -1725,13 +2171,17 @@ function renderDisk() {
   const root = state.disk && state.disk.roots[0];
   if (!root || !root.total) {
     $('gauge-label').textContent = state.tree ? `Scanned ${fmt(state.tree.size)}` : 'No scan yet';
+    $('disk-big').textContent = state.tree ? fmt(state.tree.size) : '—';
     return;
   }
   const used = root.total - root.free;
   const pct = (used / root.total) * 100;
-  $('gauge-fill').style.width = pct.toFixed(1) + '%';
-  $('gauge-fill').classList.toggle('warn', pct > 85);
-  $('gauge-label').textContent = `${fmt(used)} used of ${fmt(root.total)} · ${fmt(root.free)} free (${(100 - pct).toFixed(0)}%)`;
+  const ring = $('ring-fill');
+  const C = 2 * Math.PI * 35;
+  ring.style.strokeDashoffset = (C * (1 - pct / 100)).toFixed(1);
+  ring.classList.toggle('warn', pct > 85);
+  $('disk-big').innerHTML = `${esc(fmt(root.free))}<small>free</small>`;
+  $('gauge-label').textContent = `${fmt(used)} of ${fmt(root.total)} used (${pct.toFixed(0)}%)`;
 }
 
 function renderCrumbs() {
@@ -1854,21 +2304,57 @@ $('btn-trash').onclick = async () => {
 
 function renderLegend() {
   $('legend').innerHTML = Object.entries(KIND_LABELS)
-    .map(([k, l]) => `<span><span class="dot" style="background:#${KIND_COLORS[k].toString(16).padStart(6, '0')}"></span>${l}</span>`)
+    .map(([k, l]) => `<span><span class="dot" style="background:#${KIND_COLORS[k].toString(16).padStart(6, '0')}"></span><b>${SUBURB_NAMES[k]}</b><small>${l}</small></span>`)
     .join('');
 }
 
 // ---------------------------------------------------------------------------
 // Scanning
 // ---------------------------------------------------------------------------
+// Full Disk Access (macOS). One prompt, one switch, no more pop-ups. The
+// overlay polls until the switch is on, then the scan starts by itself.
+let permTimer = null;
+async function ensureAccess() {
+  if (DEMO || !api.permStatus) return true;
+  const st = await api.permStatus();
+  if (st.fullDisk) return true;
+  if (sessionStorage.getItem('ss-perm-skip')) return true;
+  return new Promise((resolve) => {
+    const perm = $('perm');
+    perm.hidden = false;
+    const done = (ok) => {
+      clearInterval(permTimer);
+      permTimer = null;
+      perm.hidden = true;
+      resolve(ok);
+    };
+    $('btn-perm-open').onclick = () => api.openPermissions();
+    $('btn-perm-skip').onclick = () => {
+      sessionStorage.setItem('ss-perm-skip', '1');
+      done(true);
+    };
+    clearInterval(permTimer);
+    permTimer = setInterval(async () => {
+      const now = await api.permStatus();
+      if (now.fullDisk) {
+        toast('Full access granted. Scanning…');
+        done(true);
+      }
+    }, 1500);
+  });
+}
+
 async function runScan(root) {
   if (state.scanning) return;
+  if (!(await ensureAccess())) return;
   state.scanning = true;
   $('btn-scan').disabled = true;
   $('progress').hidden = false;
   tooltip.hidden = true;
+  buildSite();
   const off = api.onProgress((p) => {
     $('progress-text').textContent = `Scanning… ${p.files.toLocaleString()} files · ${fmt(p.bytes)}`;
+    setScanProgress(p);
   });
   try {
     state.disk = await api.diskInfo();
@@ -1883,6 +2369,7 @@ async function runScan(root) {
     layout();
   } catch (err) {
     if (!/aborted/.test(String(err))) toast('Scan failed: ' + (err.message || err));
+    layout();
   } finally {
     off();
     state.scanning = false;
@@ -1915,15 +2402,21 @@ try {
 } catch {}
 setPanel(panelOpen);
 $('btn-panel').onclick = () => setPanel($('panel').classList.contains('collapsed'));
+$('tabs').addEventListener('click', (e) => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  for (const t of $('tabs').children) t.classList.toggle('active', t === tab);
+  for (const page of document.querySelectorAll('.tab-page')) page.hidden = page.id !== 'tab-' + tab.dataset.tab;
+});
 renderLegend();
 api.diskInfo().then((d) => {
   state.disk = d;
   renderDisk();
 });
 if (DEMO) {
-  $('btn-scan').textContent = 'Scan (demo data)';
+  $('btn-scan').querySelector('span').textContent = 'Scan (demo data)';
   runScan(null);
 }
 
 // Exposed for automated UI checks.
-window.__storageSaver = { state, openMenu, layout, toggleNight };
+window.__storageSaver = { state, openMenu, layout, toggleNight, buildSite, setScanProgress };

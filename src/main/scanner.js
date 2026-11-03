@@ -92,6 +92,8 @@ async function scan(root, options = {}) {
         node.files += child.files;
         node.mtime = Math.max(node.mtime, child.mtime);
         if (child.size > 0) node.children.push(child);
+        // A top-level folder is complete: tell the UI so it can raise its building now.
+        if (depth === 0 && child.size > 0) onProgress({ files: scannedFiles, bytes: scannedBytes, current: full, done: { name: child.name, path: child.path, size: child.size, kind: child.kind, isDir: true, files: child.files } });
       } else if (entry.isFile()) {
         let st;
         try {
@@ -111,7 +113,9 @@ async function scan(root, options = {}) {
         node.files += 1;
         node.mtime = Math.max(node.mtime, st.mtimeMs);
         if (st.size >= keepFileMin) {
-          node.children.push({ name: entry.name, path: full, size: st.size, isDir: false, kind: classify(full, false, entry.name), mtime: st.mtimeMs, files: 1 });
+          const leaf = { name: entry.name, path: full, size: st.size, isDir: false, kind: classify(full, false, entry.name), mtime: st.mtimeMs, files: 1 };
+          node.children.push(leaf);
+          if (depth === 0) onProgress({ files: scannedFiles, bytes: scannedBytes, current: full, done: leaf });
         } else {
           smallSize += st.size;
           smallCount += 1;

@@ -12,47 +12,94 @@
   <div id="sky-night"></div>
   <div id="scene"></div>
 
-  <aside id="panel">
+  <aside id="panel" class="collapsed">
     <header>
-      <div class="titlebar">
-        <h1>Storage Saver</h1>
-        <button id="btn-panel" class="icon" title="Show details">▾</button>
+      <div class="brand">
+        <div class="logo" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="brand-text">
+          <h1>Storage Saver</h1>
+          <nav id="crumbs"></nav>
+        </div>
+        <button id="btn-panel" class="icon" title="Show details" aria-label="Show details">
+          <svg viewBox="0 0 16 16" width="14" height="14"><path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
       </div>
-      <div id="disk">
-        <div class="gauge"><div class="gauge-fill" id="gauge-fill"></div></div>
-        <div class="gauge-label" id="gauge-label">No scan yet</div>
+
+      <div class="disk">
+        <svg class="ring" viewBox="0 0 84 84" aria-hidden="true">
+          <circle class="ring-track" cx="42" cy="42" r="35" />
+          <circle id="ring-fill" class="ring-fill" cx="42" cy="42" r="35" />
+        </svg>
+        <div class="disk-text">
+          <div id="disk-big" class="disk-big">—</div>
+          <div id="gauge-label" class="disk-small">No scan yet</div>
+        </div>
       </div>
+
       <div class="actions">
-        <button id="btn-scan" class="primary">Scan my files</button>
-        <button id="btn-pick" title="Scan a different folder">Choose folder…</button>
+        <button id="btn-scan" class="primary">
+          <svg viewBox="0 0 16 16" width="14" height="14"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span>Scan my files</span>
+        </button>
+        <button id="btn-pick" class="ghost" title="Scan a different folder">
+          <svg viewBox="0 0 16 16" width="15" height="15"><path d="M1.5 4a1 1 0 011-1h3.2l1.6 1.6H13.5a1 1 0 011 1V12a1 1 0 01-1 1h-11a1 1 0 01-1-1z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        </button>
       </div>
-      <div id="progress" hidden><span id="progress-text">Scanning…</span><button id="btn-cancel" class="link">Cancel</button></div>
-      <nav id="crumbs"></nav>
+      <div id="progress" hidden>
+        <div class="bar"><div id="progress-bar"></div></div>
+        <div class="progress-row"><span id="progress-text">Scanning…</span><button id="btn-cancel" class="link">Cancel</button></div>
+      </div>
     </header>
 
     <div id="panel-body">
+      <nav class="tabs" id="tabs">
+        <button class="tab active" data-tab="clean">Clean up</button>
+        <button class="tab" data-tab="top">Biggest</button>
+        <button class="tab" data-tab="legend">Suburbs</button>
+      </nav>
 
-    <section id="section-clean">
-      <h2>Safe clean <span id="clean-total" class="muted"></span></h2>
-      <div id="clean-groups"></div>
-      <button id="btn-trash" class="danger" disabled>Move selected to Trash</button>
-      <p class="hint">Nothing is deleted permanently. Items go to the Trash / Recycle Bin so you can get them back.</p>
-    </section>
+      <section id="tab-clean" class="tab-page">
+        <div class="section-head"><span>Safe to clear</span><span id="clean-total" class="muted"></span></div>
+        <div id="clean-groups"></div>
+        <button id="btn-trash" class="danger" disabled>Move selected to Trash</button>
+        <p class="hint">Nothing is deleted permanently. Items go to the Trash so you can get them back.</p>
+      </section>
 
-    <section id="section-top">
-      <h2>Biggest items here</h2>
-      <ol id="top-list"></ol>
-    </section>
+      <section id="tab-top" class="tab-page" hidden>
+        <div class="section-head"><span>Biggest items here</span></div>
+        <ol id="top-list"></ol>
+      </section>
 
-    <footer>
-      <div class="legend" id="legend"></div>
-      <p class="hint">Drag to orbit · Scroll to zoom · Click a building for options · Double-click the sky, press Esc, or use Leave to go back out</p>
-    </footer>
+      <section id="tab-legend" class="tab-page" hidden>
+        <div class="legend" id="legend"></div>
+        <p class="hint">Drag to orbit · Scroll to zoom · Click a building for options · Double-click the sky or press Esc to leave a building.</p>
+      </section>
     </div>
   </aside>
 
-  <button id="btn-night" class="float">☾ Night</button>
-  <button id="btn-leave" class="float" hidden>← Leave</button>
+  <div id="hud">
+    <button id="btn-leave" class="float" hidden>← Leave</button>
+    <button id="btn-night" class="float">☾ Night</button>
+  </div>
+  <div id="perm" class="overlay" hidden>
+    <div class="card">
+      <div class="perm-art" aria-hidden="true">
+        <span class="lock"></span>
+      </div>
+      <h2>Allow full access</h2>
+      <p>macOS asks permission folder by folder. One switch, <b>Full Disk Access</b>, lets Storage Saver measure everything at once and you will never see another pop-up.</p>
+      <ol class="steps">
+        <li>Click <b>Open System Settings</b>. It lands on Privacy &amp; Security › Full Disk Access.</li>
+        <li>Turn on <b>Storage Saver</b>. If it is not listed, press <b>+</b> and choose it from Applications.</li>
+        <li>Come back here. The scan starts on its own.</li>
+      </ol>
+      <div class="perm-actions">
+        <button id="btn-perm-open" class="primary">Open System Settings</button>
+        <button id="btn-perm-skip" class="link">Scan without it</button>
+      </div>
+      <p class="hint" id="perm-wait">Waiting for the switch to be turned on…</p>
+    </div>
+  </div>
   <div id="tooltip" hidden></div>
   <div id="menu" hidden></div>
   <div id="toast" hidden></div>

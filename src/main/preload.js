@@ -13,4 +13,6 @@ contextBridge.exposeInMainWorld('storage', {
   pickFolder: () => ipcRenderer.invoke('fs:pickFolder'),
   trash: (paths) => ipcRenderer.invoke('fs:trash', paths),
   emptyFolder: (dir) => ipcRenderer.invoke('fs:emptyFolder', dir),
+  permStatus: () => ipcRenderer.invoke('perm:status'),
+  openPermissions: () => ipcRenderer.invoke('perm:open'),
 });

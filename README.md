@@ -17,6 +17,8 @@ Click **Scan my files** (scans your home folder) or **Choose folder…** for any
 - **Drag** to orbit, **scroll** to zoom, **click** a building for Walk in / Show in Finder / Demolish, **double-click** the sky to go back up.
 - Colours: orange = caches & temp, purple = downloads & installers, blue = video/photo/audio, green = apps, yellow = documents, grey = other/system, dark glass = free space.
 - **☾ Night** (top right) switches to night: stars, lit windows, lamps, headlights and neon.
+- **While scanning** the city is a construction site: roads laid, cranes swinging, road crews patching, and each top-level folder's building goes up the moment it has been measured.
+- **Full Disk Access** (macOS): a one-time screen opens the exact System Settings switch so there are no per-folder pop-ups.
 - **Safe clean** lists what can go. Everything goes to the Trash / Recycle Bin, never a permanent delete.
 
 ## Browser demo

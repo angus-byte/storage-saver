@@ -72,6 +72,27 @@ ipcMain.handle('scan:start', async (event, root) => {
   }
 });
 
+// macOS "Full Disk Access": one switch in System Settings that covers every
+// folder, so the app never has to ask per folder. Reading the TCC database
+// only works once it has been granted, which makes it a reliable probe.
+function hasFullDiskAccess() {
+  if (process.platform !== 'darwin') return true;
+  try {
+    const fd = fs.openSync(path.join(os.homedir(), 'Library/Application Support/com.apple.TCC/TCC.db'), 'r');
+    fs.closeSync(fd);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+ipcMain.handle('perm:status', () => ({ platform: process.platform, fullDisk: hasFullDiskAccess() }));
+
+ipcMain.handle('perm:open', () => {
+  if (process.platform === 'darwin') shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles');
+  return true;
+});
+
 ipcMain.handle('scan:cancel', () => {
   if (currentScan) currentScan.abort();
   return true;
