@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { scan, classify, suggestions } = require('../src/main/scanner');
+const { scan, classify, suggestions, isSafeCache } = require('../src/main/scanner');
 
 function mk(dir, files) {
   for (const [rel, size] of Object.entries(files)) {
@@ -53,4 +53,22 @@ test('suggestions find caches and old downloads', () => {
   assert.equal(s.caches.items.length, 1); // nested cache not double-listed
   assert.equal(s.caches.total, 200e6);
   assert.deepEqual(s.oldDownloads.items.map((i) => i.name), ['old.dmg']);
+});
+
+test('Safe Clean only offers well-known cache folders, never a person\'s own Logs/Temp folder', () => {
+  assert.ok(isSafeCache('/Users/a/Library/Caches/com.foo'));
+  assert.ok(isSafeCache('/Users/a/Library/Containers/com.foo/Data/Library/Caches/x'));
+  assert.ok(isSafeCache('C:\\Users\\a\\AppData\\Local\\Temp\\x'));
+  assert.ok(!isSafeCache('/Users/a/Documents/Client Logs'));
+  assert.ok(!isSafeCache('/Users/a/Movies/Temp'));
+  assert.ok(!isSafeCache('/Users/a/Pictures/Cache'));
+  const tree = {
+    name: 'home', path: '/h', size: 0, isDir: true, kind: 'other', children: [
+      { name: 'Caches', path: '/h/Library/Caches', size: 200e6, isDir: true, kind: 'cache', children: [] },
+      { name: 'Logs', path: '/h/Documents/Client Logs', size: 900e6, isDir: true, kind: classify('/h/Documents/Client Logs', true), children: [] },
+      { name: 'Temp', path: '/h/Movies/Temp', size: 900e6, isDir: true, kind: classify('/h/Movies/Temp', true), children: [] },
+    ],
+  };
+  const s = suggestions(tree);
+  assert.deepEqual(s.caches.items.map((i) => i.path), ['/h/Library/Caches']);
 });

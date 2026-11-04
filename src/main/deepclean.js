@@ -34,15 +34,21 @@ function isDeepPath(p) {
 
 /** Total bytes under a path (files counted once, symlinks not followed). */
 async function sizeOf(p) {
+  return (await measure(p)).size;
+}
+
+/** { size, mtime } under a path: bytes plus the newest change to anything inside. */
+async function measure(p) {
   let st;
   try {
     st = await fsp.lstat(p);
   } catch {
-    return 0;
+    return { size: 0, mtime: 0 };
   }
-  if (st.isSymbolicLink()) return 0;
-  if (!st.isDirectory()) return st.size;
+  if (st.isSymbolicLink()) return { size: 0, mtime: 0 };
+  if (!st.isDirectory()) return { size: st.size, mtime: st.mtimeMs };
   let size = 0;
+  let mtime = st.mtimeMs;
   const stack = [p];
   while (stack.length) {
     const d = stack.pop();
@@ -57,12 +63,14 @@ async function sizeOf(p) {
       if (e.isDirectory()) stack.push(full);
       else if (e.isFile()) {
         try {
-          size += (await fsp.lstat(full)).size;
+          const fst = await fsp.lstat(full);
+          size += fst.size;
+          mtime = Math.max(mtime, fst.mtimeMs);
         } catch {}
       }
     }
   }
-  return size;
+  return { size, mtime };
 }
 
 async function newestMtime(p) {
@@ -159,20 +167,38 @@ function readPlistJson(file) {
   });
 }
 
+/**
+ * [folder, "Name.app"] pairs in a folder and one level down, since many apps
+ * live in a subfolder (/Applications/Adobe Photoshop 2025/, Setapp/, Utilities/).
+ */
+async function appBundles(dir) {
+  const out = [];
+  let entries = [];
+  try {
+    entries = await fsp.readdir(dir, { withFileTypes: true });
+  } catch {}
+  for (const e of entries) {
+    if (e.name.endsWith('.app')) out.push([dir, e.name]);
+    else if (e.isDirectory() && !e.name.startsWith('.')) {
+      let inner = [];
+      try {
+        inner = await fsp.readdir(path.join(dir, e.name));
+      } catch {}
+      for (const n of inner) if (n.endsWith('.app')) out.push([path.join(dir, e.name), n]);
+    }
+  }
+  return out;
+}
+
 /** Names and bundle ids of installed apps (macOS). */
 async function installedApps(home) {
   const dirs = ['/Applications', '/Applications/Utilities', '/System/Applications', '/System/Applications/Utilities', path.join(home, 'Applications')];
   const names = new Set();
   const ids = new Set();
   for (const d of dirs) {
-    let entries = [];
-    try {
-      entries = await fsp.readdir(d);
-    } catch {}
-    for (const e of entries) {
-      if (!e.endsWith('.app')) continue;
+    for (const [dir, e] of await appBundles(d)) {
       names.add(e.slice(0, -4).toLowerCase());
-      const info = await readPlistJson(path.join(d, e, 'Contents', 'Info.plist'));
+      const info = await readPlistJson(path.join(dir, e, 'Contents', 'Info.plist'));
       if (info && info.CFBundleIdentifier) ids.add(info.CFBundleIdentifier.toLowerCase());
       if (info && info.CFBundleName) names.add(String(info.CFBundleName).toLowerCase());
     }
@@ -208,9 +234,10 @@ async function appLeftovers(home, now, listApps = installedApps, platform = 'dar
     for (const e of entries) {
       if (!e.isDirectory() || KEEP.test(e.name) || belongsToApp(e.name, apps)) continue;
       const p = path.join(root, e.name);
-      const mtime = await newestMtime(p);
+      // Newest change to anything inside: a folder's own mtime only moves when
+      // its direct children change, so an app in daily use could look stale.
+      const { size, mtime } = await measure(p);
       if (now - mtime < 90 * DAY) continue;
-      const size = await sizeOf(p);
       if (size < 20 * MB) continue;
       out.push({ name: e.name, path: p, size, kind: 'apps', mtime, isDir: true, note: 'No matching app installed' });
     }
@@ -364,4 +391,4 @@ function sweepOnly(sugg) {
   return out;
 }
 
-module.exports = { parseXmlPlist, mailAttachments, deepSuggestions, sweepOnly, isDeepPath, sizeOf, sameFile, findDuplicates, belongsToApp, renderCaches };
+module.exports = { parseXmlPlist, appBundles, measure, mailAttachments, deepSuggestions, sweepOnly, isDeepPath, sizeOf, sameFile, findDuplicates, belongsToApp, renderCaches };

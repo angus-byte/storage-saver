@@ -125,7 +125,7 @@ test('deep clean finds render caches, dev junk, logs and leftovers', async () =>
   w('Library/Application Support/OldApp/data.db', 25 * MB);
   w('Library/Application Support/Spotify/data.db', 25 * MB);
   const old = Date.now() / 1000 - 200 * 86400;
-  for (const d of ['OldApp', 'Spotify']) fs.utimesSync(path.join(home, 'Library/Application Support', d), old, old);
+  for (const d of ['OldApp', 'Spotify']) for (const f of ['', 'data.db']) fs.utimesSync(path.join(home, 'Library/Application Support', d, f), old, old);
   const tree = await scan(home, { keepFileMin: MB });
   const listApps = async () => ({ names: new Set(['spotify']), ids: new Set(['com.spotify.client']) });
   const deep = await deepSuggestions(tree, { home, platform: 'darwin', listApps });
@@ -133,6 +133,29 @@ test('deep clean finds render caches, dev junk, logs and leftovers', async () =>
   assert.ok(deep.devJunk.items.some((i) => i.name === 'Xcode DerivedData'));
   assert.ok(deep.logsInstallers.items.some((i) => i.name === 'App logs'));
   assert.deepEqual(deep.appLeftovers.items.map((i) => i.name), ['OldApp']);
+});
+
+test('a support folder with recent files inside is in use, not a leftover', async () => {
+  const home = tmp();
+  const MB = 1024 * 1024;
+  const dir = path.join(home, 'Library/Application Support/BusyApp');
+  fs.mkdirSync(path.join(dir, 'deep'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'deep', 'today.db'), Buffer.alloc(25 * MB));
+  const old = Date.now() / 1000 - 200 * 86400;
+  fs.utimesSync(dir, old, old); // the folder itself looks untouched
+  const tree = await scan(home, { keepFileMin: MB });
+  const deep = await deepSuggestions(tree, { home, platform: 'darwin', listApps: async () => ({ names: new Set(['other']), ids: new Set() }) });
+  assert.equal(deep.appLeftovers.items.length, 0);
+});
+
+test('installed apps are found one folder down (Adobe, Setapp style)', async () => {
+  const { appBundles } = require('../src/main/deepclean');
+  const root = tmp();
+  fs.mkdirSync(path.join(root, 'Top.app'));
+  fs.mkdirSync(path.join(root, 'Adobe Photoshop 2025', 'Adobe Photoshop 2025.app'), { recursive: true });
+  fs.mkdirSync(path.join(root, '.hidden', 'Nope.app'), { recursive: true });
+  const found = (await appBundles(root)).map(([, n]) => n).sort();
+  assert.deepEqual(found, ['Adobe Photoshop 2025.app', 'Top.app']);
 });
 
 test('app matching by name and bundle id', () => {

@@ -3036,13 +3036,16 @@ function fmt(bytes) {
 function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
+// The Trash / Recycle Bin itself: emptying it is permanent (the one delete that is).
+const isBin = (p) => /[\\/](\.Trash|\$Recycle\.Bin)([\\/]S-1-[\d-]+)?[\\/]?$/i.test(p || '');
 // Empties a protected folder (e.g. ~/Pictures) into the Trash, keeping the folder.
 async function clearContents(item) {
   const res = await api.emptyFolder(item.path);
   if (pro.handleBlocked(res)) return;
   const bad = res.filter((r) => !r.ok);
   if (bad.length && bad.length === res.length) return trashError(bad[0]);
-  toast(`Moved the contents of ${item.name} to Trash${bad.length ? ` · ${bad.length} couldn't be moved` : ''}. Empty the Trash to reclaim the space.`);
+  if (isBin(item.path)) toast(`Emptied the Trash${bad.length ? ` · ${bad.length} item${bad.length > 1 ? 's' : ''} couldn't be removed` : ''}. ${fmt(item.size)} freed.`);
+  else toast(`Moved the contents of ${item.name} to Trash${bad.length ? ` · ${bad.length} couldn't be moved` : ''}. Empty the Trash to reclaim the space.`);
   await runScan(state.tree ? state.tree.path : null);
 }
 function trashError(r) {
@@ -3124,7 +3127,9 @@ function fileList(items, top) {
     const li = document.createElement('li');
     const canOpen = it.isDir && (it.children || []).length > 0;
     const guard = it.path && protectionOf(it.path);
-    const canDemolish = it.path && !it.aggregate && !it.virtual && !guard;
+    // Already in the Trash: "demolishing" it again would free nothing.
+    const inBin = !!it.path && /[\\/](\.Trash|\$Recycle\.Bin)[\\/]/i.test(it.path);
+    const canDemolish = it.path && !it.aggregate && !it.virtual && !guard && !inBin;
     const sub = top && it.rel && it.rel !== it.name ? `<small>${esc(it.rel.slice(0, -it.name.length - 1))}</small>` : '';
     li.innerHTML = `<div class="row"><span class="chev">${canOpen ? '›' : ''}</span><span class="icon">${it.isDir ? '📁' : it.aggregate ? '🗂' : '📄'}</span><span class="name" title="${esc(it.path || '')}">${esc(it.name)}${sub}</span><span class="size">${fmt(it.size)}</span></div>`;
     const row = li.firstChild;
@@ -3137,8 +3142,8 @@ function fileList(items, top) {
         (canDemolish
           ? `<button data-act="demolish" class="demolish">🧨 Demolish</button>`
           : guard && guard.contents
-            ? `<button data-act="clear" class="demolish">🧹 Clear contents</button>`
-            : `<span class="muted">${guard ? 'A macOS system folder, it has to stay. Open it to pick files.' : it.aggregate ? 'Lots of small files: open the folder in Finder to pick.' : ''}</span>`);
+            ? `<button data-act="clear" class="demolish">${isBin(it.path) ? '🗑 Empty Trash' : '🧹 Clear contents'}</button>`
+            : `<span class="muted">${guard ? 'A macOS system folder, it has to stay. Open it to pick files.' : inBin ? 'Already in the Trash. Empty the Trash to free the space.' : it.aggregate ? 'Lots of small files: open the folder in Finder to pick.' : ''}</span>`);
     };
     actions.onclick = async (e) => {
       const act = e.target.closest('[data-act]');
@@ -3148,7 +3153,7 @@ function fileList(items, top) {
         const cloud = drives.cloudOf(it.path);
         actions.innerHTML = (cloud ? `<span class="muted">⚠️ This is in ${esc(cloud.label)}: it will be deleted online and on every synced device.</span>` : '') + `<button data-act="confirm" class="demolish">Yes, demolish ${fmt(it.size)}${cloud ? ' everywhere' : ''}</button><button data-act="keep">Keep it</button>`;
       }
-      else if (act.dataset.act === 'clear') actions.innerHTML = `<button data-act="confirm-clear" class="demolish">Yes, move everything inside ${esc(it.name)} to Trash (${fmt(it.size)})</button><button data-act="keep">Keep it</button>`;
+      else if (act.dataset.act === 'clear') actions.innerHTML = `<button data-act="confirm-clear" class="demolish">${isBin(it.path) ? `Yes, empty the Trash for good (${fmt(it.size)})` : `Yes, move everything inside ${esc(it.name)} to Trash (${fmt(it.size)})`}</button><button data-act="keep">Keep it</button>`;
       else if (act.dataset.act === 'confirm-clear') await clearContents(it);
       else if (act.dataset.act === 'keep') showActions();
       else if (act.dataset.act === 'confirm') await demolish(it);
@@ -3184,7 +3189,7 @@ function fileList(items, top) {
 // Safe Clean tab: one button, only things that are always safe to clear.
 const SAFE_GROUPS = [
   ['caches', '🧹 Caches & temp files', 'Apps rebuild them when needed.'],
-  ['trash', '🗑 Trash / Recycle Bin', 'Things you already deleted, not yet emptied.'],
+  ['trash', '🗑 Trash / Recycle Bin', 'Things you already deleted. Emptied for good.'],
 ];
 const GROUPS = [
   ['oldDownloads', 'Old downloads & installers', 'Untouched for 60+ days.', 'trash'],
@@ -3283,7 +3288,8 @@ $('btn-trash').onclick = async () => {
   await moveToTrash(items);
 };
 async function moveToTrash(items) {
-  let freed = 0;
+  let freed = 0; // moved to the Trash
+  let emptied = 0; // removed from the Trash for good
   let failed = 0;
   let capped = null;
   for (const it of items) {
@@ -3293,16 +3299,21 @@ async function moveToTrash(items) {
       capped = capped || cap; // over the free allowance: skip it, smaller items may still fit
       continue;
     }
-    if (res.every((r) => r.ok)) freed += it.size;
-    else failed += 1;
+    if (!res.every((r) => r.ok)) failed += 1;
+    else if (isBin(it.path)) emptied += it.size;
+    else freed += it.size;
   }
   if (capped) pro.showUpgrade('cap', capped);
-  if (!freed && !failed) {
+  if (!freed && !emptied && !failed) {
     updateTrashButton();
     renderSafe();
     return;
   }
-  toast(`Moved ${fmt(freed)} to Trash${failed ? ` · ${failed} failed` : ''}${capped ? ' · free limit reached' : ''}. Empty the Trash to reclaim the space.`);
+  const parts = [];
+  if (freed) parts.push(`Moved ${fmt(freed)} to Trash`);
+  if (emptied) parts.push(`emptied ${fmt(emptied)} from the Trash`);
+  if (!parts.length) parts.push('Nothing moved');
+  toast(`${parts.join(' and ')}${failed ? ` · ${failed} failed` : ''}${capped ? ' · free limit reached' : ''}.${freed ? ' Empty the Trash to reclaim the space.' : ''}`);
   await runScan(state.tree ? state.tree.path : null);
 }
 

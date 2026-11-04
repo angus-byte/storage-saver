@@ -6,7 +6,7 @@ const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
 const { execFile } = require('child_process');
-const { sizeOf } = require('./deepclean');
+const { sizeOf, appBundles } = require('./deepclean');
 
 const DAY = 86400000;
 
@@ -102,13 +102,9 @@ async function listApps(home, { now = Date.now(), dirs } = {}) {
   dirs = dirs || ['/Applications', path.join(home, 'Applications')];
   const apps = [];
   for (const d of dirs) {
-    let entries = [];
-    try {
-      entries = await fsp.readdir(d);
-    } catch {}
-    for (const e of entries) {
-      if (!e.endsWith('.app')) continue;
-      const appPath = path.join(d, e);
+    // Apps one folder down too (/Applications/Adobe Photoshop 2025/… .app).
+    for (const [dir, e] of await appBundles(d)) {
+      const appPath = path.join(dir, e);
       const info = (await readPlist(path.join(appPath, 'Contents', 'Info.plist'))) || {};
       const bundleId = info.CFBundleIdentifier || '';
       if (/^com\.apple\./i.test(bundleId)) continue;
