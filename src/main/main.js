@@ -8,6 +8,7 @@ const { createLicence } = require('./licence');
 const { deepSuggestions, sweepOnly, sizeOf, sameFile } = require('./deepclean');
 const config = require('./config');
 const cityhall = require('./cityhall');
+const browsers = require('./browsers');
 const cityhallWin = require('./cityhall-win');
 const { createProtection, friendlyError } = require('./protect');
 const { createSettings, lowSpaceCheck } = require('./settings');
@@ -601,4 +602,40 @@ ipcMain.handle('startup:openSettings', () => {
   if (process.platform === 'darwin') shell.openExternal('x-apple.systempreferences:com.apple.LoginItems-Settings.extension');
   else if (WIN) shell.openExternal('ms-settings:startupapps');
   return true;
+});
+
+// --- Privacy: browser caches, history, cookies, downloads, site data --------
+// The page only says which browser and which kinds; the paths are worked out
+// again here. Browsers must be closed. Free: caches (count towards the
+// allowance). Pro: history, download history, cookies and site data.
+ipcMain.handle('privacy:list', async () => {
+  try {
+    return { ok: true, platform: process.platform, browsers: await browsers.listBrowsers() };
+  } catch (err) {
+    return { ok: false, browsers: [], error: String((err && err.message) || err) };
+  }
+});
+
+ipcMain.handle('privacy:clear', async (_e, browserId, kinds) => {
+  kinds = (Array.isArray(kinds) ? kinds : []).filter((k) => browsers.KINDS.includes(k));
+  if (!kinds.length) return { ok: false, error: 'Nothing selected.' };
+  if (!plan.isPro() && kinds.some((k) => !browsers.FREE_KINDS.has(k))) return { ok: false, error: 'pro' };
+  const prep = await browsers.prepare(browserId, kinds);
+  if (!prep) return { ok: false, error: 'Browser not found. Refresh the list.' };
+  const procs = await browsers.runningProcesses();
+  if (browsers.isRunning(prep.browser, procs)) {
+    const name = prep.browser.name;
+    const hint = WIN ? (prep.browser.id === 'edge' ? ' Edge can keep running in the background: turn off Startup boost in Edge settings, or end it in Task Manager.' : ` It may still be running in the system tray.`) : '';
+    return { ok: false, error: `Quit ${name} first, then try again.${hint}`, running: true };
+  }
+  const paths = prep.files.map((f) => f.path);
+  const sizes = await measure(paths);
+  const blocked = plan.checkAllowance(sum(sizes, paths));
+  if (blocked) return { ok: false, ...blocked };
+  const trashOne = async (p) => (await trashPaths([p]))[0];
+  const { results, freed } = await browsers.clear(prep, { trash: trashOne, sizes });
+  plan.recordDemolished(sum(sizes, results.filter((r) => r.ok && sizes.has(r.path)).map((r) => r.path)));
+  pushPlan();
+  const failed = results.filter((r) => !r.ok);
+  return { ok: !failed.length, freed, results, error: failed.length ? failed[0].error || 'Some items could not be cleared' : undefined, perm: failed.some((r) => r.perm) };
 });

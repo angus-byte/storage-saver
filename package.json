@@ -1,6 +1,6 @@
 {
   "name": "storage-saver",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Keeps your computer's storage low. 3D visualiser of where your space goes, plus safe one-click cleanup.",
   "main": "src/main/main.js",
   "scripts": {
@@ -18,8 +18,9 @@
     "electron-builder": "^26.18.0"
   },
   "dependencies": {
-    "three": "^0.170.0",
-    "electron-updater": "^6.6.2"
+    "electron-updater": "^6.6.2",
+    "sql.js": "^1.13.0",
+    "three": "^0.170.0"
   },
   "build": {
     "appId": "com.sommarfilms.storagesaver",

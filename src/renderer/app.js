@@ -1,6 +1,7 @@
 import * as THREE from './vendor/three.module.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { initCityHall } from './cityhall.js';
+import { initPrivacy } from './privacy.js';
 import { squarify } from './treemap.js';
 import { categorize, CATEGORIES } from './categories.js';
 import { mockTree, mockSuggestions, mockDisk } from './mock.js';
@@ -3450,6 +3451,7 @@ api.diskInfo().then((d) => {
   renderDisk();
 });
 initCityHall({ api, fmt, esc, toast, pro, DEMO });
+initPrivacy({ api, fmt, esc, toast, pro, DEMO });
 drives = initDrives({ api, esc, toast, runScan, DEMO });
 if (DEMO) {
   $('btn-scan').querySelector('span').textContent = 'Scan (demo data)';

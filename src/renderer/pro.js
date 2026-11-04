@@ -250,6 +250,7 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
       <li><span>🛠️ Developer junk</span>${found('devJunk')}</li>
       <li><span>📎 Mail attachments</span>${found('mailAttachments')}</li>
       <li><span>🚦 Rush Hour: switch off any startup item</span></li>
+      <li><span>🕵️ Browser privacy: history, cookies &amp; site data</span></li>
       <li><span>🧾 Logs &amp; old installers</span>${found('logsInstallers')}</li>
       <li><span>📅 Weekly check-up with alert</span></li>
       <li><span>🍂 Autumn &amp; ❄️ Winter cities</span></li>
