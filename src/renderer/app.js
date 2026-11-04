@@ -162,7 +162,8 @@ scene.add(hemi);
 const key = new THREE.DirectionalLight(0xffe6c4, 3.6); // hard, warm afternoon sun
 key.position.set(130, 95, 55); // lower sun: longer, crisper shadows
 key.castShadow = true;
-key.shadow.mapSize.set(2048, 2048);
+// Finer shadow map on Mac so moving sun shadows glide; Windows laptops keep 2048 for speed.
+key.shadow.mapSize.setScalar(window.storage && window.storage.platform === "win32" ? 2048 : 4096);
 key.shadow.camera.left = -140;
 key.shadow.camera.right = 140;
 key.shadow.camera.top = 140;
@@ -761,7 +762,7 @@ function applyNight() {
   // Thicker haze in the golden hour, a little by day, almost none at night.
   scene.fog.near = 320 - 150 * warm;
   scene.fog.far = 700 - 200 * warm;
-  shaftLevel = (0.05 * (1 - k) + 0.4 * warm) * (1 - focusK * 0.7);
+  shaftLevel = (0.025 * (1 - k) + 0.18 * warm) * (1 - focusK * 0.7);
   for (const s of shafts.children) s.userData.mat.color.copy(lerpHex(_c1, 0xfff1d6, 0xffa860, warm));
   hemi.color.lerp(_c2.setHex(0xffb98a), warm * 0.55);
   hemi.intensity = 0.4 + (0.35 - 0.4) * k;
