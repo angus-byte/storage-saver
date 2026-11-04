@@ -56,7 +56,7 @@ Builds come from the **Build Mac app** GitHub Action (run it by hand or push a `
 |---|---|---|
 | Full scan + whole city | ✓ | ✓ |
 | Street Sweep (Trash, old Downloads, caches, big stale files) | ✓ | ✓ |
-| Demolish (move to Trash) | 20 GB in total | Unlimited |
+| Demolish (move to Trash) | 20 GB a month | Unlimited |
 | Deep Clean: render caches, duplicates, app leftovers, old iPhone backups, dev junk, logs/installers | see what's found | ✓ |
 | Weekly check-up with alert | | ✓ |
 | Performance tab: live memory / processor monitor, quit heavy apps | ✓ | ✓ |

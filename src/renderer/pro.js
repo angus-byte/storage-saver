@@ -3,6 +3,8 @@
 // process (src/main/licence.js); this file only shows them.
 
 const PGB = 1024 ** 3;
+// "1 Dec": when the free monthly allowance resets.
+const resetDay = (t) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 
 export const DEEP_GROUPS = [
   ['renderCaches', 'Video render caches', 'Final Cut, Premiere and Resolve rebuild these when needed.', 'empty'],
@@ -19,12 +21,16 @@ export const DEEP_GROUPS = [
 // app. Licence key "DEMO-PRO" unlocks Pro.
 // ---------------------------------------------------------------------------
 export function demoPlanApi(sizeOf) {
-  let st = { plan: 'free', capBytes: 20 * PGB, usedBytes: 0, remainingBytes: 20 * PGB, email: null, keyHint: null, weekly: { enabled: true, lastRun: 0 }, priceLabel: '$19.99' };
+  const nextMonth = () => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
+  };
+  let st = { plan: 'free', capBytes: 20 * PGB, usedBytes: 0, remainingBytes: 20 * PGB, resetsAt: nextMonth(), email: null, keyHint: null, weekly: { enabled: true, lastRun: 0 }, priceLabel: '$19.99' };
   const subs = [];
   const emit = () => subs.forEach((cb) => cb({ ...st }));
   const charge = (paths) => {
     const bytes = paths.reduce((n, p) => n + (/\/\.Trash(\/|$)/.test(p) ? 0 : sizeOf(p)), 0);
-    if (st.plan === 'free' && bytes > st.remainingBytes) return { ok: false, error: 'cap', needBytes: bytes, remainingBytes: st.remainingBytes, capBytes: st.capBytes };
+    if (st.plan === 'free' && bytes > st.remainingBytes) return { ok: false, error: 'cap', needBytes: bytes, remainingBytes: st.remainingBytes, capBytes: st.capBytes, resetsAt: st.resetsAt };
     if (st.plan === 'free') {
       st.usedBytes += bytes;
       st.remainingBytes = Math.max(0, st.capBytes - st.usedBytes);
@@ -47,12 +53,12 @@ export function demoPlanApi(sizeOf) {
     openCheckout: async () => true,
     activateLicence: async (key) => {
       if (String(key).trim().toUpperCase() !== 'DEMO-PRO') return { ok: false, error: 'Demo: use the key DEMO-PRO' };
-      st = { ...st, plan: 'pro', capBytes: null, remainingBytes: null, email: 'you@example.com', keyHint: '…MO-PRO', activations: { used: 1, limit: 3 } };
+      st = { ...st, plan: 'pro', capBytes: null, remainingBytes: null, resetsAt: null, email: 'you@example.com', keyHint: '…MO-PRO', activations: { used: 1, limit: 3 } };
       emit();
       return { ok: true, status: { ...st } };
     },
     deactivateLicence: async () => {
-      st = { ...st, plan: 'free', capBytes: 20 * PGB, remainingBytes: Math.max(0, 20 * PGB - st.usedBytes), email: null, keyHint: null, activations: null };
+      st = { ...st, plan: 'free', capBytes: 20 * PGB, remainingBytes: Math.max(0, 20 * PGB - st.usedBytes), resetsAt: nextMonth(), email: null, keyHint: null, activations: null };
       emit();
       return { ok: true, status: { ...st } };
     },
@@ -176,7 +182,7 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
       chip.innerHTML = `<span class="pro-badge">PRO</span><span style="flex:1">Unlimited Demolish · Deep Clean${st.weekly.enabled ? ' · weekly check-up on' : ''}</span><span class="go">Manage</span>`;
     } else {
       const usedPct = Math.min(100, (st.usedBytes / st.capBytes) * 100);
-      chip.innerHTML = `<span><b>Free</b> · ${fmt(st.remainingBytes)} of ${fmt(st.capBytes)} left</span><span class="meter"><i style="width:${100 - usedPct}%"></i></span><span class="go">Go Pro</span>`;
+      chip.innerHTML = `<span><b>Free</b> · ${fmt(st.remainingBytes)} of ${fmt(st.capBytes)} left${st.resetsAt ? ` · resets ${resetDay(st.resetsAt)}` : ''}</span><span class="meter"><i style="width:${100 - usedPct}%"></i></span><span class="go">Go Pro</span>`;
     }
   }
 
@@ -242,7 +248,7 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
     const d = state.deep || {};
     const found = (k) => (d[k] && d[k].total ? `<span class="found">${fmt(d[k].total)} found</span>` : '');
     return `<ul class="feat">
-      <li><span>🧨 Unlimited Demolish</span><b>${st && st.plan === 'free' ? `free: ${fmt(st.capBytes)}` : ''}</b></li>
+      <li><span>🧨 Unlimited Demolish</span><b>${st && st.plan === 'free' ? `free: ${fmt(st.capBytes)} a month` : ''}</b></li>
       <li><span>🎬 Video render caches</span>${found('renderCaches')}</li>
       <li><span>👯 Duplicate files</span>${found('duplicates')}</li>
       <li><span>🏚️ App leftovers</span>${found('appLeftovers')}</li>
@@ -294,7 +300,7 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
     } else {
       const why =
         reason === 'cap' && info
-          ? `<div class="why">The free plan demolishes up to <b>${fmt(info.capBytes)}</b> in total. ${info.remainingBytes > 0 ? `You have ${fmt(info.remainingBytes)} left and this needs ${fmt(info.needBytes)}.` : 'You have used it all.'}</div>`
+          ? `<div class="why">The free plan demolishes up to <b>${fmt(info.capBytes)} a month</b>. ${info.remainingBytes > 0 ? `You have ${fmt(info.remainingBytes)} left this month and this needs ${fmt(info.needBytes)}.` : 'You have used this month\'s allowance.'}${info.resetsAt ? ` It resets on ${resetDay(info.resetsAt)}.` : ''}</div>`
           : '';
       const more = deepTotal();
       card.innerHTML = `<button class="close" aria-label="Close">×</button>
