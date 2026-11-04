@@ -57,7 +57,7 @@ test('scan leaves out cloud folders and lists them', async () => {
   fs.writeFileSync(path.join(g, 'big.mov'), Buffer.alloc(4096));
   fs.mkdirSync(path.join(home, 'Movies'));
   fs.writeFileSync(path.join(home, 'Movies', 'a.mov'), Buffer.alloc(1024));
-  const d = createDrives({ home, platform: 'darwin' });
+  const d = createDrives({ home, platform: process.platform === 'win32' ? 'win32' : 'darwin' });
   const tree = await scan(home, { skip: (p) => d.blocked(p) });
   assert.equal(tree.size, 1024);
   assert.equal(tree.skipped.length, 1);
