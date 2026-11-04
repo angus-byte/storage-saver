@@ -132,4 +132,4 @@ export function mockSuggestions(tree) {
   };
 }
 
-export const mockDisk = { platform: 'darwin', home: '/Users/angus', roots: [{ path: '/Users/angus', total: 500 * GB, free: 46 * GB }] };
+export const mockDisk = { platform: 'darwin', home: '/Users/angus', roots: [{ path: '/Users/angus', total: 620 * GB, free: 46 * GB }] };

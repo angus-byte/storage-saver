@@ -18,7 +18,7 @@ test('task tables have unique ids and every job has a command', () => {
       assert.ok(t.ok && t.name && t.desc);
     }
   }
-  assert.deepEqual(mac.map((t) => t.id), ['dns', 'launch', 'scripts', 'ram', 'firstaid', 'perms', 'spotlight']);
+  assert.deepEqual(mac.map((t) => t.id), ['dns', 'launch', 'scripts', 'ram', 'firstaid', 'perms', 'snapshots', 'spotlight']);
   assert.deepEqual(win.map((t) => t.id), ['dns', 'icons', 'cleanup', 'diskcheck', 'optimise', 'sfc']);
 });
 
