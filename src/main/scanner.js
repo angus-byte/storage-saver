@@ -72,7 +72,9 @@ async function scan(root, options = {}) {
     keepFileMin = 20 * 1024 * 1024, // files smaller than this are folded into "Small files"
     maxChildren = 40,
     signal,
+    skip = () => null, // (dirPath) => truthy to leave a folder out (cloud / other drives)
   } = options;
+  const skipped = [];
   let scannedFiles = 0;
   let scannedBytes = 0;
   let lastProgress = 0;
@@ -98,6 +100,11 @@ async function scan(root, options = {}) {
       if (entry.isSymbolicLink()) continue;
       if (DEV_MARKERS.has(entry.name.toLowerCase())) devMarked = true;
       if (entry.isDirectory()) {
+        const why = skip(full);
+        if (why) {
+          skipped.push({ path: full, name: entry.name, ...why });
+          continue;
+        }
         if (depth >= maxDepth) {
           // Too deep to detail: size it flat.
           const flat = await sizeFlat(full);
@@ -187,7 +194,9 @@ async function scan(root, options = {}) {
       for (const e of entries) {
         const full = path.join(d, e.name);
         if (e.isSymbolicLink()) continue;
-        if (e.isDirectory()) stack.push(full);
+        if (e.isDirectory()) {
+          if (!skip(full)) stack.push(full);
+        }
         else if (e.isFile()) {
           try {
             const st = await fsp.stat(full);
@@ -203,6 +212,7 @@ async function scan(root, options = {}) {
   }
 
   const tree = await walk(path.resolve(root), 0);
+  tree.skipped = skipped;
   onProgress({ files: scannedFiles, bytes: scannedBytes, current: root, done: true });
   return tree;
 }
