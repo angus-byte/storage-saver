@@ -120,9 +120,9 @@ controls.minDistance = 50;
 controls.maxDistance = 520;
 controls.target.set(0, 14, 0);
 
-const hemi = new THREE.HemisphereLight(0xdff3ef, 0x6b6558, 0.62);
+const hemi = new THREE.HemisphereLight(0xdff3ef, 0x4a4238, 0.4);
 scene.add(hemi);
-const key = new THREE.DirectionalLight(0xffe6c4, 3.3); // hard, warm afternoon sun
+const key = new THREE.DirectionalLight(0xffe6c4, 3.6); // hard, warm afternoon sun
 key.position.set(130, 95, 55); // lower sun: longer, crisper shadows
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
@@ -135,7 +135,7 @@ key.shadow.bias = -0.0002;
 key.shadow.radius = 1.5; // crisp daytime shadows (softened at night in applyNight)
 key.shadow.blurSamples = 12;
 scene.add(key);
-const fill = new THREE.DirectionalLight(0x9fd8e8, 0.25);
+const fill = new THREE.DirectionalLight(0x9fd8e8, 0.12);
 fill.position.set(-120, 60, -90);
 scene.add(fill);
 
@@ -252,7 +252,7 @@ function skyEnv(top, horizon, ground, light, lightPos, lightPower) {
 const envDay = skyEnv(0x5cc4c2, 0xd9f4ee, 0x5a5a52, 0xfff0d6, new THREE.Vector3(130, 95, 55), 6);
 const envNight = skyEnv(0x0b1430, 0x22346e, 0x05070f, 0xcfd8ff, new THREE.Vector3(-260, 170, -330), 2.5);
 scene.environment = envDay;
-scene.environmentIntensity = 0.4;
+scene.environmentIntensity = 0.28;
 
 const moonGlow = glow(-260, 170, -330, 70, 0xcfd8ff, 0.5, 0.3);
 scene.add(moonGlow);
@@ -652,18 +652,18 @@ function applyNight() {
   $('btn-night').textContent = night ? '☀ Day' : '☾ Night';
   scene.fog.color.copy(lerpHex(_c1, 0x4fbdbb, 0x0c1430, k));
   hemi.color.copy(lerpHex(_c1, 0xdff3ef, 0x3a4a7a, k));
-  hemi.groundColor.copy(lerpHex(_c1, 0x6b6558, 0x0c1020, k));
-  hemi.intensity = 0.62 + (0.35 - 0.62) * k;
-  fill.intensity = 0.25 + (0.15 - 0.25) * k;
+  hemi.groundColor.copy(lerpHex(_c1, 0x4a4238, 0x0c1020, k));
+  hemi.intensity = 0.4 + (0.35 - 0.4) * k;
+  fill.intensity = 0.12 + (0.15 - 0.12) * k;
   key.shadow.radius = 1.5 + 4.5 * k;
   renderer.toneMappingExposure = 0.98 + (0.95 - 0.98) * k;
   scene.environment = k < 0.5 ? envDay : envNight;
-  scene.environmentIntensity = k < 0.5 ? 0.4 * (1 - k * 1.4) : 0.3 * (k - 0.3);
+  scene.environmentIntensity = k < 0.5 ? 0.28 * (1 - k * 1.4) : 0.3 * (k - 0.3);
   // Sun: warm and high → low orange at the horizon → cool moonlight from the other side.
   if (k < 0.5) {
     const u = k / 0.5;
     key.color.copy(lerpHex(_c1, 0xffe6c4, 0xff7a3d, u));
-    key.intensity = 3.3 + (1.1 - 3.3) * u;
+    key.intensity = 3.6 + (1.1 - 3.6) * u;
     key.position.set(130 + (170 - 130) * u, 95 + (14 - 95) * u, 55 + (-40 - 55) * u);
   } else {
     const u = (k - 0.5) / 0.5;
