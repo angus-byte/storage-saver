@@ -44,8 +44,9 @@ Builds come from the **Build Mac app** GitHub Action (run it by hand or push a `
 1. Scanner + 3D view (done)
 2. Safe clean: caches, trash, old downloads, stale large files (done)
 3. Duplicate finder
-4. Weekly background scan + low-space alert
-5. Cloud/external-drive offload for large stale media
+4. Weekly background scan + low-space alert (done)
+5. Menu bar / tray widget: free space, Safe Clean, low-space alert, keep running, open at login (done)
+6. Cloud/external-drive offload for large stale media
 
 ## Free and Pro (Gigapolis Pro)
 

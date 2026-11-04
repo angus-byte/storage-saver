@@ -101,8 +101,8 @@ button.link { background: none; border: none; color: var(--accent); padding: 0 4
 @keyframes slide { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
 .progress-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); margin-top: 6px; }
 
-.tabs { display: flex; gap: 4px; background: var(--soft); border-radius: 12px; padding: 4px; }
-.tab { flex: 1; padding: 7px 8px; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 600; font-size: 12.5px; }
+.tabs { display: flex; gap: 2px; background: var(--soft); border-radius: 12px; padding: 4px; }
+.tab { flex: 1; padding: 7px 4px; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 600; font-size: 12px; }
 .tab:hover:not(:disabled) { background: var(--soft); color: var(--text); }
 .tab.active { background: var(--panel-solid); color: var(--text); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); }
 .tab-page { display: flex; flex-direction: column; }
@@ -185,6 +185,18 @@ button.link { background: none; border: none; color: var(--accent); padding: 0 4
 .lock::before { content: ""; position: absolute; left: 5px; top: -12px; width: 16px; height: 16px; border: 4px solid #fff; border-bottom: none; border-radius: 10px 10px 0 0; box-sizing: border-box; }
 .lock::after { content: ""; position: absolute; left: 11px; top: 7px; width: 4px; height: 7px; border-radius: 2px; background: #15a39a; }
 #perm-wait { margin: 10px 0 0; }
+#drive-list { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+#drive-list .muted { color: var(--muted); }
+.drive { border: 1px solid var(--border); border-radius: 14px; padding: 10px 12px; background: var(--soft); }
+.drive-row { display: flex; align-items: center; gap: 10px; }
+.drive-icon { font-size: 20px; }
+.drive-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.drive-name b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.drive-name small { color: var(--muted); font-size: 11.5px; }
+.ghost-btn { border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 10px; padding: 6px 10px; cursor: pointer; font: inherit; font-size: 12.5px; }
+.drive-confirm { margin-top: 10px; }
+.drive-confirm p { color: var(--text) !important; font-size: 13px; }
+.primary.danger { background: #d9534f; width: auto; flex: none; padding: 9px 16px; }
 
 /* Files tab: categories, then the files in the one you clicked. */
 #files-head { align-items: center; gap: 8px; }
