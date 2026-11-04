@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What Is System Data on Mac and How to Clear It · Gigapolis</title>
+<meta name="description" content="System Data on a Mac is mostly Time Machine snapshots, caches and logs. Here's what's in it, what's safe to delete and how to shrink it.">
+<link rel="canonical" href="https://getgigapolis.com/guides/system-data-mac">
+<link rel="icon" href="/img/icon.png">
+<meta name="theme-color" content="#b9583c">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Gigapolis">
+<meta property="og:url" content="https://getgigapolis.com/guides/system-data-mac">
+<meta property="og:title" content="What is System Data on a Mac, and how do you clear it?">
+<meta property="og:description" content="System Data on a Mac is mostly Time Machine snapshots, caches and logs. Here's what's in it, what's safe to delete and how to shrink it.">
+<meta property="og:image" content="https://getgigapolis.com/img/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@graph": [{"@type": "Article", "headline": "What is System Data on a Mac, and how do you clear it?", "description": "System Data on a Mac is mostly Time Machine snapshots, caches and logs. Here's what's in it, what's safe to delete and how to shrink it.", "datePublished": "2026-11-04", "dateModified": "2026-11-04", "mainEntityOfPage": "https://getgigapolis.com/guides/system-data-mac", "image": "https://getgigapolis.com/img/og.jpg", "author": {"@type": "Organization", "name": "Gigapolis", "url": "https://getgigapolis.com/"}, "publisher": {"@type": "Organization", "name": "Gigapolis", "logo": {"@type": "ImageObject", "url": "https://getgigapolis.com/img/icon.png"}}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://getgigapolis.com/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://getgigapolis.com/guides/free-up-space-mac"}, {"@type": "ListItem", "position": 3, "name": "What is System Data on a Mac, and how do you clear it?", "item": "https://getgigapolis.com/guides/system-data-mac"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is it safe to delete System Data on a Mac?", "acceptedAnswer": {"@type": "Answer", "text": "Parts of it. Local Time Machine snapshots, caches and logs are safe to remove. Core macOS files are not, and macOS stops you deleting them anyway."}}, {"@type": "Question", "name": "Why does System Data keep growing?", "acceptedAnswer": {"@type": "Answer", "text": "Usually because Time Machine keeps local snapshots while your backup drive is disconnected, and because app caches grow over time. Connecting your backup drive and clearing large caches normally brings it down."}}, {"@type": "Question", "name": "What is a normal size for System Data?", "acceptedAnswer": {"@type": "Answer", "text": "There's no fixed number, but 12–20 GB is common on a modern Mac. Anything much over 50 GB usually means snapshots or a large cache."}}]}]}
+</script>
+<style>
+:root{--cream:#f6efe3;--cream-2:#eadfcb;--rust:#b9583c;--ink:#2b1d16;--muted:#6e5a4c;--card:#fffaf2;--line:rgba(43,29,22,.12)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--cream);color:var(--ink);font:17px/1.65 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--rust)}
+img{max-width:100%;height:auto;display:block}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+header.nav{display:flex;align-items:center;justify-content:space-between;padding:18px 0}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:20px;text-decoration:none;color:var(--ink)}
+.brand img{width:36px;height:36px;border-radius:9px}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 20px;border-radius:12px;font-weight:600;text-decoration:none;font-size:16px}
+.btn-primary{background:var(--rust);color:#fff;box-shadow:0 6px 18px rgba(185,88,60,.35)}
+.btn-dark{background:var(--ink);color:#fff}
+article{max-width:740px;margin:0 auto;padding:10px 0 40px}
+.crumbs{font-size:14px;color:var(--muted);margin:10px 0 0}.crumbs a{color:var(--muted)}
+h1{font-size:clamp(30px,5vw,44px);line-height:1.12;letter-spacing:-.02em;margin:14px 0 10px}
+.meta{font-size:14px;color:var(--muted);margin:0 0 22px}
+.lead{font-size:19px}
+h2{font-size:clamp(23px,3vw,28px);line-height:1.2;margin:40px 0 10px;letter-spacing:-.01em}
+h3{font-size:19px;margin:26px 0 6px}
+p,li{color:#3d2c22}
+li{margin:6px 0}
+code{background:var(--cream-2);padding:2px 6px;border-radius:6px;font-size:.9em;word-break:break-word}
+pre{background:var(--ink);color:#f6efe3;padding:14px 16px;border-radius:12px;overflow-x:auto;font-size:14px}
+pre code{background:none;padding:0;color:inherit}
+.note{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--rust);border-radius:12px;padding:14px 18px;margin:20px 0}
+.note p{margin:0}
+.toc{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 20px;margin:20px 0}
+.toc p{margin:0 0 4px;font-weight:600}.toc ol{margin:0;padding-left:20px}
+.cta{background:var(--cream-2);border-radius:18px;padding:24px;margin:36px 0;display:grid;grid-template-columns:1fr;gap:12px}
+.cta h2{margin:0;font-size:24px}.cta p{margin:0}
+.cta img{border-radius:12px;box-shadow:0 14px 34px rgba(43,29,22,.2)}
+table{width:100%;border-collapse:collapse;font-size:15px;margin:16px 0;display:block;overflow-x:auto}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--cream-2)}
+.related{border-top:1px solid var(--line);margin-top:40px;padding-top:10px}
+.related ul{padding-left:20px}
+footer{padding:30px 0 60px;color:var(--muted);font-size:14px;text-align:center}
+footer a{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="nav"><a class="brand" href="/"><img src="/img/icon.png" alt="" width="36" height="36">Gigapolis</a><nav><a class="btn btn-dark" style="padding:9px 16px" href="/#download">Download</a></nav></header>
+  <article>
+    <p class="crumbs"><a href="/">Home</a> › <a href="/guides/free-up-space-mac">Guides</a></p>
+    <h1>What is System Data on a Mac, and how do you clear it?</h1>
+    <p class="meta">By the Gigapolis team · Updated 4 November 2026</p>
+<p class="lead">System Data (called “Other” in older versions of macOS) is the catch-all for everything macOS doesn't sort into a category like Apps, Photos or Documents. On most Macs, the big parts are <b>local Time Machine snapshots</b>, <b>caches</b> and <b>logs</b>. Those can be cleared safely. The rest is macOS itself, which you should leave alone.</p>
+
+<div class="toc"><p>In this guide</p><ol>
+<li><a href="#whats-in">What's in System Data</a></li>
+<li><a href="#why-big">Why System Data gets so big</a></li>
+<li><a href="#snapshots">Remove local Time Machine snapshots</a></li>
+<li><a href="#caches">Clear caches and logs</a></li>
+<li><a href="#other">Other things hiding in System Data</a></li>
+<li><a href="#dont">What not to delete</a></li>
+</ol></div>
+
+<h2 id="whats-in">What's in System Data?</h2>
+<p>Apple doesn't publish an exact list, but System Data usually includes:</p>
+<ul>
+<li><b>Local Time Machine snapshots</b>: copies of changed files that Time Machine keeps on your Mac between backups.</li>
+<li><b>Caches</b>: files apps and macOS keep so things load faster.</li>
+<li><b>Logs and diagnostic reports</b>.</li>
+<li><b>Virtual memory</b> (swap files) and the sleep image.</li>
+<li><b>iPhone and iPad backups</b> made in Finder.</li>
+<li><b>Files in hidden or system folders</b> that macOS can't put in another category, such as virtual machines, app support files and some developer tools.</li>
+<li><b>macOS itself</b>: the system volume and its updates.</li>
+</ul>
+
+<h2 id="why-big">Why is System Data so big?</h2>
+<p>The usual cause is local snapshots. If Time Machine can't reach its backup drive for a while, it keeps snapshots on your Mac, and they can grow to tens of gigabytes. macOS is meant to remove them automatically when space runs low, but the Storage bar still counts them, which is why System Data can look alarming. Large caches (from browsers, video apps, Xcode or Docker) are the next most common cause.</p>
+
+<h2 id="snapshots">Remove local Time Machine snapshots</h2>
+<p>Open <b>Terminal</b> (in Applications → Utilities) and list the snapshots:</p>
+<pre><code>tmutil listlocalsnapshots /</code></pre>
+<p>Each line ends in a date like <code>2026-11-01-093015</code>. To delete one, use that date:</p>
+<pre><code>sudo tmutil deletelocalsnapshots 2026-11-01-093015</code></pre>
+<p>You'll be asked for your Mac's password. This only removes the copies on your Mac. <b>Backups on your Time Machine drive aren't touched.</b> Connecting your backup drive and letting a backup finish also lets macOS clear old snapshots on its own.</p>
+<p>In Gigapolis, the free <b>Maintenance</b> tab has a <b>Clear Time Machine snapshots</b> button that does the same thing without Terminal.</p>
+
+<h2 id="caches">Clear caches and logs</h2>
+<p>In Finder, press <b>⇧⌘G</b> and go to <code>~/Library/Caches</code>. Each folder belongs to an app. Quit the app, then move its folder's contents to the Trash. Logs live in <code>~/Library/Logs</code>. Restart your Mac afterwards. Our <a href="/guides/clear-cache-mac">guide to clearing cache on a Mac</a> has more detail, including browsers.</p>
+<p>Gigapolis's free <b>Street Sweep</b> lists the larger cache folders it can safely clear, and Maintenance can run macOS's own log clean-up scripts.</p>
+
+<h2 id="other">Other things hiding in System Data</h2>
+<ul>
+<li><b>iPhone and iPad backups.</b> In Finder, select your device and click <b>Manage Backups</b> to delete old ones.</li>
+<li><b>Developer files.</b> Xcode's DerivedData, simulators and Docker images can take tens of gigabytes.</li>
+<li><b>Video editing caches.</b> Final Cut, Premiere and DaVinci Resolve keep render files that can be rebuilt.</li>
+<li><b>Mail attachments</b> saved in the Mail library.</li>
+</ul>
+<p>Gigapolis Pro's <b>Deep Clean</b> looks for all four of these, and shows each item before anything is removed.</p>
+
+<h2 id="dont">What not to delete</h2>
+<p>Don't delete files in <code>/System</code>, <code>/Library</code> or <code>/private</code> by hand, and don't turn off System Integrity Protection to make room. macOS needs a certain amount of System Data to run, and on a modern Mac 12–20 GB of it is normal.</p>
+
+<div class="cta">
+  <img src="/img/ui-day.jpg" width="1440" height="900" alt="Gigapolis showing a Mac's storage as a 3D city" loading="lazy">
+  <h2>See what's really in System Data</h2>
+  <p>Gigapolis scans the folders behind System Data, like caches, logs and app support files, and shows them in a 3D city of your disk, so you can see what is really taking the space. Free to download for Mac and Windows.</p>
+  <p><a class="btn btn-primary" href="/#download">Download Gigapolis free</a></p>
+</div>
+<h2 id="faq">Questions</h2>
+<h3>Is it safe to delete System Data on a Mac?</h3>
+<p>Parts of it. Local Time Machine snapshots, caches and logs are safe to remove. Core macOS files are not, and macOS stops you deleting them anyway.</p>
+<h3>Why does System Data keep growing?</h3>
+<p>Usually because Time Machine keeps local snapshots while your backup drive is disconnected, and because app caches grow over time. Connecting your backup drive and clearing large caches normally brings it down.</p>
+<h3>What is a normal size for System Data?</h3>
+<p>There's no fixed number, but 12–20 GB is common on a modern Mac. Anything much over 50 GB usually means snapshots or a large cache.</p>
+    <div class="related"><h2>Related guides</h2><ul>
+<li><a href="/guides/free-up-space-mac">How to free up disk space on a Mac</a></li>
+<li><a href="/guides/clear-cache-mac">How to clear cache on a Mac</a></li>
+<li><a href="/guides/find-large-files-mac">How to find large files on a Mac</a></li>
+    </ul></div>
+  </article>
+</div>
+<footer><div class="wrap">© 2026 <a href="/">Gigapolis disk space analyzer</a> · <a href="/guides/free-up-space-mac">Free up space on Mac</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/refund">Refunds</a> · <a href="mailto:hello@getgigapolis.com">Contact</a></div></footer>
+<script>
+// Privacy-friendly visit count: no cookies, no IDs (see /privacy).
+(function () {
+  if (navigator.webdriver || !navigator.sendBeacon) return;
+  var src = null;
+  try { src = sessionStorage.getItem('gp_src'); } catch (e) {}
+  if (src) return;
+  var q = new URLSearchParams(location.search);
+  src = q.get('ref') || q.get('utm_source') || '';
+  if (!src && document.referrer) { try { var h = new URL(document.referrer).hostname; if (h !== location.hostname) src = h; } catch (e) {} }
+  src = src || 'direct';
+  try { sessionStorage.setItem('gp_src', src); } catch (e) {}
+  try { navigator.sendBeacon('/api/track', new Blob([JSON.stringify({ k: 'visit', p: '', s: src })], { type: 'text/plain' })); } catch (e) {}
+})();
+</script>
+</body>
+</html>
