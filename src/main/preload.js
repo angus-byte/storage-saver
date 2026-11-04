@@ -54,4 +54,7 @@ contextBridge.exposeInMainWorld('storage', {
   // Menu bar / tray: open on a tab, or rescan after a Safe Clean from the tray.
   onNavigate: (cb) => ipcRenderer.on('nav:tab', (_e, tab) => cb(tab)),
   onRescan: (cb) => ipcRenderer.on('nav:rescan', () => cb()),
+  // Power Station (Performance tab)
+  perfSample: () => ipcRenderer.invoke('perf:sample'),
+  perfQuit: (key, force) => ipcRenderer.invoke('perf:quit', key, force),
 });

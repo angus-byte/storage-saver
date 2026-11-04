@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, Notification, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Notification, nativeImage, powerMonitor } = require('electron');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -16,6 +16,7 @@ const { createSettings, lowSpaceCheck } = require('./settings');
 const { createTray, fmt } = require('./tray');
 const protection = createProtection();
 const { createDrives, driveMessage } = require('./drives');
+const { createMonitor } = require('./perf');
 let drives = createDrives(); // reloaded with the saved opt-ins once userData is known
 const driveBlock = (p) => {
   const c = drives.blocked(p);
@@ -750,3 +751,17 @@ ipcMain.handle('privacy:clear', async (_e, browserId, kinds) => {
   const failed = results.filter((r) => !r.ok);
   return { ok: !failed.length, freed, results, error: failed.length ? failed[0].error || 'Some items could not be cleared' : undefined, perm: failed.some((r) => r.perm) };
 });
+
+// --- Power Station: live memory / CPU / processes ---------------------------
+// Only samples while the Performance tab asks (every few seconds).
+let monitor = null;
+const getMonitor = () =>
+  (monitor ||= createMonitor({
+    // Gigapolis and its own helpers are never offered a Quit button.
+    selfPids: () => [process.pid, ...app.getAppMetrics().map((m) => m.pid)],
+    // macOS only; Windows doesn't report heat to apps.
+    thermal: () => (process.platform === 'darwin' && powerMonitor.getCurrentThermalState ? powerMonitor.getCurrentThermalState() : null),
+  }));
+ipcMain.handle('perf:sample', () => getMonitor().sample());
+ipcMain.handle('perf:quit', (_e, key, force) => getMonitor().quit(String(key), !!force));
+app.on('will-quit', () => monitor && monitor.stop());
