@@ -118,7 +118,13 @@ test('windows battery', () => {
 
 test('monitor samples this machine and refuses to quit itself', async () => {
   const m = p.createMonitor({ selfPids: () => [process.pid] });
-  const s = await m.sample();
+  // Windows: the PowerShell helper needs a few seconds before its first reading.
+  let s = await m.sample();
+  for (let i = 0; i < 40 && !s.procs.length; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    s = await m.sample();
+  }
+  m.stop();
   assert.ok(s.mem.total > 0 && s.cpu.cores > 0 && s.procs.length > 0);
   const self = s.procs.find((g) => g.self) || { key: 'exe:' + process.argv[0] };
   const r = await m.quit(self.key);
