@@ -2,6 +2,7 @@ import * as THREE from './vendor/three.module.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { initCityHall } from './cityhall.js';
 import { squarify } from './treemap.js';
+import { categorize, CATEGORIES } from './categories.js';
 import { mockTree, mockSuggestions, mockDisk } from './mock.js';
 import { initPro, demoPlanApi, mockDeep } from './pro.js';
 import { initSeasons } from './seasons.js';
@@ -64,7 +65,9 @@ const KIND_COLORS = {
   other: 0xe3ddd0,
   free: 0x7cc46a,
 };
+for (const c of CATEGORIES) KIND_COLORS[c.id] = c.color;
 const KIND_LABELS = { cache: 'Caches & temp', trash: 'Trash', downloads: 'Downloads & installers', media: 'Video, photo & audio', apps: 'Apps', documents: 'Documents', system: 'System', other: 'Other', free: 'Free space (park)' };
+for (const c of CATEGORIES) KIND_LABELS[c.id] = c.label;
 const BASE_W = 112;
 const BASE_D = 86;
 const STREET = 5; // gap between districts
@@ -75,7 +78,8 @@ const MAX_H = 85;
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-const state = { disk: null, tree: null, suggestions: null, deep: null, path: [], selected: new Map(), scanning: false };
+// city: one node per main category (see categories.js); open: the category whose files show in the panel.
+const state = { disk: null, tree: null, city: [], open: null, suggestions: null, deep: null, selected: new Map(), scanning: false };
 let pro = null; // free / Pro plan UI, see pro.js
 let seasons = null; // Pro autumn / winter, see seasons.js
 let night = false; // target state
@@ -83,6 +87,7 @@ let nightK = 0; // 0 = full day, 1 = full night; eased towards the target each f
 const clock = new THREE.Clock();
 const NIGHT_SECONDS = 4.5;
 let labelPairs = [];
+let pickExtras = []; // roofs, spires, signs and labels that count as clicking their building
 
 // ---------------------------------------------------------------------------
 // Scene setup
@@ -97,7 +102,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.VSMShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
+renderer.toneMappingExposure = 0.98;
 container.appendChild(renderer.domElement);
 
 const SKY = 0x3cb6b4;
@@ -115,10 +120,10 @@ controls.minDistance = 50;
 controls.maxDistance = 520;
 controls.target.set(0, 14, 0);
 
-const hemi = new THREE.HemisphereLight(0xdff3ef, 0x6b6558, 1.0);
+const hemi = new THREE.HemisphereLight(0xdff3ef, 0x4a4238, 0.4);
 scene.add(hemi);
-const key = new THREE.DirectionalLight(0xffd9a8, 2.6); // warm late-afternoon sun
-key.position.set(120, 120, 90);
+const key = new THREE.DirectionalLight(0xffe6c4, 3.6); // hard, warm afternoon sun
+key.position.set(130, 95, 55); // lower sun: longer, crisper shadows
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
 key.shadow.camera.left = -140;
@@ -127,10 +132,10 @@ key.shadow.camera.top = 140;
 key.shadow.camera.bottom = -140;
 key.shadow.camera.far = 500;
 key.shadow.bias = -0.0002;
-key.shadow.radius = 6; // soft penumbra
+key.shadow.radius = 1.5; // crisp daytime shadows (softened at night in applyNight)
 key.shadow.blurSamples = 12;
 scene.add(key);
-const fill = new THREE.DirectionalLight(0x9fd8e8, 0.45);
+const fill = new THREE.DirectionalLight(0x9fd8e8, 0.12);
 fill.position.set(-120, 60, -90);
 scene.add(fill);
 
@@ -219,6 +224,36 @@ moon.position.set(-260, 170, -330);
 moon.visible = false;
 scene.add(moon);
 nightOnly.push(moon);
+// Reflections: a small sky (gradient dome + sun or moon) rendered into an
+// environment map, so glass, water, metal and cars mirror the sky. One map
+// for day and one for night; applyNight swaps and blends them.
+const pmrem = new THREE.PMREMGenerator(renderer);
+function skyEnv(top, horizon, ground, light, lightPos, lightPower) {
+  const env = new THREE.Scene();
+  const geo = new THREE.SphereGeometry(100, 32, 16);
+  const cols = [];
+  const cT = new THREE.Color(top), cH = new THREE.Color(horizon), cG = new THREE.Color(ground), c = new THREE.Color();
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i) / 100;
+    if (y >= 0) c.copy(cH).lerp(cT, Math.pow(y, 0.6));
+    else c.copy(cH).lerp(cG, Math.min(1, -y * 3));
+    cols.push(c.r, c.g, c.b);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  env.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+  const sun = new THREE.Mesh(new THREE.SphereGeometry(7, 16, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(light).multiplyScalar(lightPower) }));
+  sun.position.copy(lightPos).setLength(85);
+  env.add(sun);
+  const tex = pmrem.fromScene(env, 0.02).texture;
+  geo.dispose();
+  return tex;
+}
+const envDay = skyEnv(0x5cc4c2, 0xd9f4ee, 0x5a5a52, 0xfff0d6, new THREE.Vector3(130, 95, 55), 6);
+const envNight = skyEnv(0x0b1430, 0x22346e, 0x05070f, 0xcfd8ff, new THREE.Vector3(-260, 170, -330), 2.5);
+scene.environment = envDay;
+scene.environmentIntensity = 0.28;
+
 const moonGlow = glow(-260, 170, -330, 70, 0xcfd8ff, 0.5, 0.3);
 scene.add(moonGlow);
 nightOnly.push(moonGlow);
@@ -285,7 +320,7 @@ const barrelGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 28);
 barrelGeo.translate(0, 0.5, 0);
 const pavementMat = new THREE.MeshStandardMaterial({ color: 0xdedbd3, roughness: 0.9 });
 const parkMat = new THREE.MeshStandardMaterial({ color: 0x8ccf76, roughness: 0.95 });
-const roofMat = new THREE.MeshStandardMaterial({ color: 0xb8bcc4, roughness: 0.7 });
+const roofMat = new THREE.MeshStandardMaterial({ color: 0xc8734e, roughness: 0.75 }); // terracotta caps, as in the reference
 const spireMat = new THREE.MeshStandardMaterial({ color: 0xdfe3e8, metalness: 0.5, roughness: 0.3 });
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 1 });
 const canopyMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
@@ -340,66 +375,163 @@ function makeNightWindowTexture(seed, style = Math.floor(Math.random() * 7), pal
 }
 
 
-function makeWindowTexture(seed) {
-  const c = document.createElement('canvas');
-  c.width = 128;
-  c.height = 128;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, 128, 128);
-  // Floor bands.
-  ctx.fillStyle = 'rgba(0,0,0,0.10)';
-  for (let y = 0; y < 128; y += 16) ctx.fillRect(0, y + 13, 128, 3);
-  // Windows with frames.
-  let r = seed;
-  const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
-  for (let y = 0; y < 8; y++) {
-    for (let x = 0; x < 8; x++) {
-      const px = x * 16 + 3;
-      const py = y * 16 + 2;
-      ctx.fillStyle = 'rgba(0,0,0,0.22)';
-      ctx.fillRect(px - 1, py - 1, 12, 11);
-      const v = rnd();
-      ctx.fillStyle = v < 0.18 ? 'rgba(255,236,190,0.75)' : v < 0.3 ? 'rgba(140,190,215,0.55)' : 'rgba(45,62,88,0.6)';
-      ctx.fillRect(px, py, 10, 9);
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      ctx.fillRect(px, py, 10, 2);
-    }
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  return t;
-}
-const windowTextures = [1, 2, 3, 4].map(makeWindowTexture);
 
-function facadeMaterial(kind, w, h, d, variant = 0) {
-  const tex = windowTextures[variant % windowTextures.length].clone();
-  tex.needsUpdate = true;
-  tex.repeat.set(Math.max(1, Math.round(Math.max(w, d) / 2.6)), Math.max(1, Math.round(h / 2.6)));
+// Facade textures per building style, drawn on a 256px canvas. Windows sit in
+// the same 8x8 grid as the night window map (cells of 32px, glass at
+// x 6..26, y 4..22) so lit windows line up after dark. Each texture also
+// gets a bump map (same drawing in greys) so mortar, frames and sills read
+// as relief in the hard sun.
+const FACADE_KINDS = ['office', 'brick', 'stone', 'glass', 'concrete'];
+function makeFacade(kind, seed) {
+  const S = 256;
+  const C = 32;
+  const col = document.createElement('canvas');
+  const bmp = document.createElement('canvas');
+  col.width = col.height = bmp.width = bmp.height = S;
+  const c = col.getContext('2d');
+  const k = bmp.getContext('2d');
+  let r = seed * 13 + 7;
+  const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
+  const both = (fillC, fillB, x, y, w, h) => {
+    if (fillC) {
+      c.fillStyle = fillC;
+      c.fillRect(x, y, w, h);
+    }
+    if (fillB) {
+      k.fillStyle = fillB;
+      k.fillRect(x, y, w, h);
+    }
+  };
+  const glassFill = () => {
+    const v = rnd();
+    return v < 0.14 ? 'rgba(255,232,180,0.85)' : v < 0.32 ? 'rgba(150,200,225,0.75)' : 'rgba(42,58,84,0.8)';
+  };
+  // Window with frame, sill and a sky glint at the top.
+  const win = (x, y, w, h, frame = 'rgba(30,30,36,0.55)', sill = true) => {
+    both(frame, '#303030', x - 1.5, y - 1.5, w + 3, h + 3);
+    both(glassFill(), '#1a1a1a', x, y, w, h);
+    c.fillStyle = 'rgba(255,255,255,0.28)';
+    c.fillRect(x, y, w, 2.5);
+    c.fillStyle = 'rgba(255,255,255,0.08)';
+    c.beginPath();
+    c.moveTo(x, y + h);
+    c.lineTo(x + w * 0.45, y);
+    c.lineTo(x + w * 0.65, y);
+    c.lineTo(x + w * 0.2, y + h);
+    c.fill();
+    if (sill) both('rgba(255,255,255,0.45)', '#e6e6e6', x - 2.5, y + h + 1.5, w + 5, 2.5);
+  };
+  if (kind === 'brick') {
+    both('#ffffff', '#9a9a9a', 0, 0, S, S);
+    for (let y = 0; y < S; y += 4) {
+      const off = (y / 4) % 2 ? 4 : 0;
+      for (let x = -8; x < S; x += 8) {
+        const t = 0.82 + rnd() * 0.3;
+        both(`rgba(${Math.round(255 * t)},${Math.round(236 * t)},${Math.round(226 * t)},1)`, '#b4b4b4', x + off, y, 7, 3);
+      }
+    }
+    for (let y = 0; y < 8; y++)
+      for (let x = 0; x < 8; x++) {
+        both('rgba(255,255,255,0.6)', '#d0d0d0', x * C + 5, y * C + 2, 22, 3); // lintel
+        win(x * C + 6, y * C + 5, 20, 17, 'rgba(250,250,245,0.9)');
+        both('rgba(0,0,0,0.18)', null, x * C + 15.5, y * C + 5, 1.5, 17); // sash bar
+      }
+  } else if (kind === 'stone') {
+    both('#f4f1ea', '#a8a8a8', 0, 0, S, S);
+    for (let y = 0; y < S; y += 8) both('rgba(0,0,0,0.07)', '#8c8c8c', 0, y, S, 1);
+    for (let y = 0; y < S; y += 8) for (let x = ((y / 8) % 2) * 12; x < S; x += 24) both('rgba(0,0,0,0.06)', '#8c8c8c', x, y, 1, 8);
+    for (let x = 0; x < 8; x++) both('rgba(255,255,255,0.35)', '#d8d8d8', x * C, 0, 4, S); // pilasters
+    for (let y = 0; y < 8; y++) {
+      both('rgba(0,0,0,0.12)', '#cfcfcf', 0, y * C + 27, S, 3); // string course
+      for (let x = 0; x < 8; x++) win(x * C + 8, y * C + 4, 16, 19, 'rgba(60,52,40,0.55)');
+    }
+  } else if (kind === 'glass') {
+    both('#c9c2b8', '#202020', 0, 0, S, S);
+    const g = c.createLinearGradient(0, 0, S, S);
+    g.addColorStop(0, 'rgba(255,255,255,0.35)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0)');
+    g.addColorStop(1, 'rgba(255,255,255,0.18)');
+    for (let y = 0; y < 8; y++)
+      for (let x = 0; x < 8; x++) {
+        const v = rnd();
+        c.fillStyle = v < 0.12 ? 'rgba(255,236,190,0.55)' : v < 0.5 ? 'rgba(88,92,98,0.7)' : 'rgba(58,62,70,0.75)';
+        c.fillRect(x * C + 2, y * C + 2, C - 4, C - 4);
+      }
+    c.fillStyle = g;
+    c.fillRect(0, 0, S, S);
+    for (let i = 0; i <= S; i += C) {
+      both('rgba(240,232,220,0.95)', '#d0d0d0', i - 2, 0, 4, S); // mullions
+      both('rgba(240,232,220,0.95)', '#d0d0d0', 0, i - 2, S, 4); // transoms
+    }
+    for (let i = C / 2; i < S; i += C) both('rgba(225,232,238,0.5)', '#909090', i - 0.5, 0, 1, S);
+  } else if (kind === 'concrete') {
+    both('#f0efec', '#b0b0b0', 0, 0, S, S);
+    for (let i = 0; i < 900; i++) both(`rgba(0,0,0,${0.03 + rnd() * 0.05})`, null, rnd() * S, rnd() * S, 2, 2);
+    for (let y = 0; y < 8; y++) {
+      // Ribbon window per floor with thin frames, a deep spandrel beneath.
+      both('rgba(30,34,44,0.6)', '#2a2a2a', 0, y * C + 3, S, 21);
+      for (let x = 0; x < 8; x++) {
+        both(glassFill(), '#1a1a1a', x * C + 1, y * C + 4, C - 2, 19);
+        c.fillStyle = 'rgba(255,255,255,0.22)';
+        c.fillRect(x * C + 1, y * C + 4, C - 2, 2);
+      }
+      both('rgba(255,255,255,0.55)', '#ececec', 0, y * C + 24, S, 2); // slab edge
+      both('rgba(0,0,0,0.08)', null, 0, y * C + 26, S, 6);
+    }
+  } else {
+    // Office: spandrel bands, framed windows, column lines.
+    both('#ffffff', '#b8b8b8', 0, 0, S, S);
+    for (let y = 0; y < 8; y++) both('rgba(0,0,0,0.09)', '#a0a0a0', 0, y * C + 25, S, 7);
+    for (let x = 0; x < 8; x++) both('rgba(0,0,0,0.05)', '#c8c8c8', x * C + 29, 0, 3, S);
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) win(x * C + 6, y * C + 4, 20, 18, 'rgba(0,0,0,0.3)', false);
+  }
+  const tex = new THREE.CanvasTexture(col);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  const bump = new THREE.CanvasTexture(bmp);
+  bump.wrapS = bump.wrapT = THREE.RepeatWrapping;
+  return { tex, bump };
+}
+const facadeTex = {};
+for (const kind of FACADE_KINDS) facadeTex[kind] = [1, 2, 3].map((sd) => makeFacade(kind, sd));
+const STYLE_FACADE = { brick: 'brick', deco: 'stone', chrysler: 'stone', civic: 'stone', stepped: 'brick', glass: 'glass', twin: 'glass', modern: 'concrete', shop: 'brick', default: 'office' };
+
+function facadeMaterial(kind, w, h, d, variant = 0, style = null) {
+  const fk = STYLE_FACADE[style] || (variant % 2 ? 'concrete' : 'office');
+  const set = facadeTex[fk][variant % 3];
+  const tex = set.tex.clone();
+  const bump = set.bump.clone();
+  tex.needsUpdate = bump.needsUpdate = true;
+  // One tile = 8 x 8 windows, about 1.2 units per storey (people are ~0.6 tall).
+  tex.repeat.set(Math.max(0.5, Math.round((Math.max(w, d) / 9.6) * 2) / 2), Math.max(0.5, Math.round((h / 9.6) * 2) / 2));
+  bump.repeat.copy(tex.repeat);
   const color = new THREE.Color(KIND_COLORS[kind] || KIND_COLORS.other);
   const hsl = {};
   color.getHSL(hsl);
   color.setHSL(hsl.h + (Math.random() - 0.5) * 0.03, hsl.s, Math.min(0.9, hsl.l + (Math.random() - 0.5) * 0.12));
   const em = makeNightWindowTexture(Math.floor(Math.random() * 1e6));
   em.repeat.copy(tex.repeat);
-  const mat = new THREE.MeshStandardMaterial({ color, map: tex, roughness: 0.7, metalness: 0.05, emissive: 0xffffff, emissiveMap: em, emissiveIntensity: night ? 0.9 : 0 });
+  const mat = new THREE.MeshStandardMaterial({ color, map: tex, bumpMap: bump, bumpScale: fk === 'glass' ? 0.6 : 1.4, roughness: fk === 'glass' ? 0.25 : 0.78, metalness: fk === 'glass' ? 0.35 : 0.04, emissive: 0xffffff, emissiveMap: em, emissiveIntensity: night ? 0.9 : 0 });
   mat.userData.dayI = 0;
   mat.userData.nightI = 0.9;
   mat.userData.th = 0.35 + Math.random() * 0.6;
   return mat;
 }
+// Trim (cornices, ledges, quoins, podiums) is a much darker, warmer shade of
+// the facade, like the reference city's brown-red bands on cream and brick.
+const TRIM_BROWN = new THREE.Color(0x5e3326);
 function trimMaterial(base) {
   const c = base.color.clone();
   const hsl = {};
   c.getHSL(hsl);
-  c.setHSL(hsl.h, hsl.s * 0.8, Math.max(0.15, hsl.l * 0.72));
-  return new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 });
+  c.setHSL(hsl.h, Math.min(1, hsl.s * 1.05), Math.max(0.12, hsl.l * 0.5));
+  c.lerp(TRIM_BROWN, 0.35);
+  return new THREE.MeshStandardMaterial({ color: c, roughness: 0.75 });
 }
-const glassMat = new THREE.MeshStandardMaterial({ color: 0x9fd3e8, roughness: 0.2, metalness: 0.4 });
+const glassMat = new THREE.MeshStandardMaterial({ color: 0x9aa4a6, roughness: 0.08, metalness: 0.75 });
 const darkMat = new THREE.MeshStandardMaterial({ color: 0x2b3240, roughness: 0.8 });
-const awningMat = new THREE.MeshStandardMaterial({ color: 0xd94f4f, roughness: 0.9 });
+const awningMat = new THREE.MeshStandardMaterial({ color: 0xa84a35, roughness: 0.9 });
 const tankMat = new THREE.MeshStandardMaterial({ color: 0x8a6a4e, roughness: 0.9 });
 const acMat = new THREE.MeshStandardMaterial({ color: 0xcfd4da, roughness: 0.8 });
 const poleMat = new THREE.MeshStandardMaterial({ color: 0x5a6068, roughness: 0.6, metalness: 0.5 });
@@ -411,7 +543,7 @@ const vehicleMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 
 const personMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
 const skinMat = new THREE.MeshStandardMaterial({ color: 0xf0c9a6, roughness: 0.9 });
 const courtMat = new THREE.MeshStandardMaterial({ color: 0xd98a4b, roughness: 0.95 });
-const waterMat = new THREE.MeshStandardMaterial({ color: 0x5bc0e8, roughness: 0.15, metalness: 0.2 });
+const waterMat = new THREE.MeshStandardMaterial({ color: 0x4fb6e0, roughness: 0.05, metalness: 0.55 });
 const benchMat = new THREE.MeshStandardMaterial({ color: 0x8b5e3c, roughness: 0.9 });
 const stoneMat = new THREE.MeshStandardMaterial({ color: 0xcfcac0, roughness: 0.9 });
 const signalMat = new THREE.MeshStandardMaterial({ color: 0x23272e, roughness: 0.7 });
@@ -429,16 +561,6 @@ let meshes = []; // hoverable: buildings and district pavements
 let extras = []; // decoration: roofs, trees, labels, lanes
 let treeSpots = [];
 
-function currentNode() {
-  let n = state.tree;
-  for (const name of state.path) {
-    const next = (n.children || []).find((c) => c.name === name && c.isDir);
-    if (!next) break;
-    n = next;
-  }
-  return n;
-}
-
 function clearBlocks() {
   for (const m of meshes) {
     blocks.remove(m);
@@ -453,6 +575,7 @@ function clearBlocks() {
   cars = [];
   people = [];
   labelPairs = [];
+  pickExtras = [];
   carMesh = cabMesh = headMesh = tailMesh = peopleBody = peopleHead = peopleHat = null;
   site = null;
   landmarkAnims = [];
@@ -469,16 +592,16 @@ function lotFor(size) {
   return 6 + 48 * Math.pow(size / Math.max(maxSizeInView, 1), 0.45);
 }
 
-const SUBURB_NAMES = { cache: 'Cache Canyon', trash: 'Trash Flats', downloads: 'Downtown Downloads', media: 'Media Heights', apps: 'App Avenue', documents: 'Document Docks', system: 'System Hills', other: 'Odds & Ends Village', free: 'Free Space Park' };
-
+// The city shows one building per main category. Each sits on its own block
+// so streets run between them; clicking one lists its files in the panel.
 function layout() {
   clearBlocks();
   closeMenu();
   if (!state.tree) return;
-  const node = currentNode();
-  const items = [...(node.children || [])];
-  const atRoot = state.path.length === 0;
-  if (atRoot && state.disk && state.disk.roots[0]) {
+  const node = state.tree;
+  state.city = categorize(node);
+  const items = [...state.city];
+  if (state.disk && state.disk.roots[0]) {
     const { total, free } = state.disk.roots[0];
     if (total > 0) {
       const otherUsed = Math.max(0, total - free - node.size);
@@ -488,17 +611,17 @@ function layout() {
   }
   items.sort((a, b) => b.size - a.size);
   maxSizeInView = items.length ? items[0].size : 1;
-  // Group into suburbs by category.
+  // One block per building (free space becomes the park).
   const groups = new Map();
   for (const it of items) {
-    const k = it.kind || 'other';
+    const k = it.category || it.name;
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(it);
   }
   const suburbs = [...groups.entries()].map(([kind, list]) => {
     const lots = list.map((it) => ({ size: lotFor(it.size), item: it }));
     const area = lots.reduce((s, l) => s + l.size, 0);
-    return { kind, list, lots, size: area * 1.3 + 24, total: list.reduce((s, i) => s + i.size, 0) };
+    return { kind: list[0].kind, list, lots, size: area * 1.3 + 24, total: list.reduce((s, i) => s + i.size, 0) };
   });
   suburbs.sort((a, b) => b.size - a.size);
   const rects = squarify(suburbs, { x: -BASE_W / 2, y: -BASE_D / 2, w: BASE_W, h: BASE_D });
@@ -507,8 +630,12 @@ function layout() {
   buildPeople(rects);
   placeTrees();
   renderCrumbs();
-  renderTop(node);
-  renderLeave(node);
+  renderFiles();
+  if (state.open) {
+    const fm = meshes.find((m) => !m.userData.district && m.userData.item.category === state.open);
+    focusMesh = fm || null;
+    focusTarget = fm ? 1 : 0;
+  }
   applyNight();
 }
 
@@ -525,16 +652,19 @@ function applyNight() {
   $('btn-night').textContent = night ? '☀ Day' : '☾ Night';
   scene.fog.color.copy(lerpHex(_c1, 0x4fbdbb, 0x0c1430, k));
   hemi.color.copy(lerpHex(_c1, 0xdff3ef, 0x3a4a7a, k));
-  hemi.groundColor.copy(lerpHex(_c1, 0x6b6558, 0x0c1020, k));
-  hemi.intensity = 1.0 + (0.35 - 1.0) * k;
-  fill.intensity = 0.45 + (0.15 - 0.45) * k;
-  renderer.toneMappingExposure = 1.1 + (0.95 - 1.1) * k;
+  hemi.groundColor.copy(lerpHex(_c1, 0x4a4238, 0x0c1020, k));
+  hemi.intensity = 0.4 + (0.35 - 0.4) * k;
+  fill.intensity = 0.12 + (0.15 - 0.12) * k;
+  key.shadow.radius = 1.5 + 4.5 * k;
+  renderer.toneMappingExposure = 0.98 + (0.95 - 0.98) * k;
+  scene.environment = k < 0.5 ? envDay : envNight;
+  scene.environmentIntensity = k < 0.5 ? 0.28 * (1 - k * 1.4) : 0.3 * (k - 0.3);
   // Sun: warm and high → low orange at the horizon → cool moonlight from the other side.
   if (k < 0.5) {
     const u = k / 0.5;
-    key.color.copy(lerpHex(_c1, 0xffd9a8, 0xff7a3d, u));
-    key.intensity = 2.6 + (1.1 - 2.6) * u;
-    key.position.set(120 + (170 - 120) * u, 120 + (14 - 120) * u, 90 + (-40 - 90) * u);
+    key.color.copy(lerpHex(_c1, 0xffe6c4, 0xff7a3d, u));
+    key.intensity = 3.6 + (1.1 - 3.6) * u;
+    key.position.set(130 + (170 - 130) * u, 95 + (14 - 95) * u, 55 + (-40 - 55) * u);
   } else {
     const u = (k - 0.5) / 0.5;
     key.color.copy(lerpHex(_c1, 0xff7a3d, 0x9fb4ff, u));
@@ -568,7 +698,73 @@ function applyNight() {
   }
   clouds.children.forEach((c) => c.children.forEach((s) => (s.material.opacity = 0.5 + (0.22 - 0.5) * k)));
   if (seasons) seasons.tintLights({ fog: scene.fog, hemi, key, nightK: k });
+  applyFocusDim();
 }
+// Spotlight: selecting a building drops a ray of light onto it while the
+// rest of the city (lights, reflections, sky) dims. focusK eases 0 -> 1.
+let focusMesh = null;
+let focusK = 0;
+let focusTarget = 0;
+let beamT = 0;
+const focusSpot = new THREE.SpotLight(0xfff4d6, 0, 0, Math.PI / 14, 0.55, 0);
+focusSpot.visible = false;
+scene.add(focusSpot, focusSpot.target);
+const rayGeo = new THREE.CylinderGeometry(0.18, 1, 1, 40, 1, true).translate(0, -0.5, 0); // hangs down from y=0
+const rayMat = new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+const ray = new THREE.Mesh(rayGeo, rayMat);
+ray.visible = false;
+ray.renderOrder = 5;
+scene.add(ray);
+const RAY_TOP = 190;
+const _focusAim = new THREE.Vector3();
+const _focusSrc = new THREE.Vector3();
+const _focusDir = new THREE.Vector3();
+const _down = new THREE.Vector3(0, -1, 0);
+function setFocus(mesh) {
+  if (mesh && mesh !== focusMesh) beamT = 0;
+  focusMesh = mesh || focusMesh;
+  focusTarget = mesh ? 1 : 0;
+}
+function applyFocusDim() {
+  const d = 1 - 0.68 * focusK;
+  hemi.intensity *= d;
+  fill.intensity *= d;
+  key.intensity *= 1 - 0.75 * focusK;
+  scene.environmentIntensity *= d;
+  document.documentElement.style.setProperty('--focus', (focusK * 0.55).toFixed(3));
+}
+function stepFocus(dt) {
+  const prev = focusK;
+  focusK += (focusTarget - focusK) * Math.min(1, dt * (focusTarget ? 3.2 : 4.5));
+  if (Math.abs(focusK - focusTarget) < 0.002) focusK = focusTarget;
+  if (focusK !== prev) applyNight();
+  const m = focusMesh;
+  const on = focusK > 0.001 && m && m.parent;
+  ray.visible = focusSpot.visible = !!on;
+  if (!on) {
+    if (!focusTarget) focusMesh = null;
+    return;
+  }
+  beamT = Math.min(1, beamT + dt * 1.6);
+  const fp = m.userData.footprint || { x: m.position.x, z: m.position.z, w: m.scale.x, d: m.scale.z };
+  const topY = 1.1 + m.scale.y;
+  const drop = 1 - Math.pow(1 - beamT, 3); // ray shoots down from the sky, easing in
+  // The ray comes from high up on the camera's side so it lights the facade, not just the roof.
+  const aim = _focusAim.set(fp.x, topY * 0.45, fp.z);
+  const src = _focusSrc.set(camera.position.x - controls.target.x, 0, camera.position.z - controls.target.z).setLength(RAY_TOP * 0.45).add(aim);
+  src.y = RAY_TOP;
+  const dist = src.distanceTo(aim) + topY * 0.6;
+  const r = Math.max(fp.w, fp.d) * 0.8 + 2;
+  ray.position.copy(src);
+  ray.quaternion.setFromUnitVectors(_down, _focusDir.subVectors(aim, src).normalize());
+  ray.scale.set(r, Math.max(0.01, dist * drop), r);
+  rayMat.opacity = 0.16 * focusK * (0.85 + 0.15 * Math.sin(clock.elapsedTime * 2.2));
+  focusSpot.position.copy(src);
+  focusSpot.target.position.copy(aim);
+  focusSpot.angle = Math.min(0.6, Math.atan2(Math.max(r, topY * 0.6), dist));
+  focusSpot.intensity = 6 * focusK * (beamT > 0.8 ? 1 : beamT / 0.8);
+}
+
 function toggleNight() {
   night = !night;
   $('btn-night').textContent = night ? '☀ Day' : '☾ Night';
@@ -587,23 +783,6 @@ function stepNight(dt) {
   applyNight();
 }
 
-// Floating "Leave" button over the city when you have walked into a folder.
-function renderLeave(node) {
-  const btn = $('btn-leave');
-  if (!state.path.length) {
-    btn.hidden = true;
-    return;
-  }
-  btn.hidden = false;
-  btn.textContent = `← Leave ${node.name}`;
-}
-function leaveBuilding() {
-  if (!state.path.length) return;
-  closeMenu();
-  state.path.pop();
-  layout();
-}
-
 function placeSuburb(r) {
   const sub = r.item;
   const x0 = r.x + STREET / 2;
@@ -615,7 +794,7 @@ function placeSuburb(r) {
   const slab = new THREE.Mesh(boxGeo, park ? parkMat : pavementMat);
   slab.position.set(x0 + w / 2, 0.6, z0 + d / 2);
   slab.scale.set(w, 0.5, d);
-  slab.userData = { item: { name: SUBURB_NAMES[sub.kind] || sub.kind, size: sub.total, kind: sub.kind, isDir: false, virtual: true, files: sub.list.length, suburb: true }, targetH: 0.5, depth: 0, district: true };
+  slab.userData = { item: { name: sub.list[0].name, size: sub.total, kind: sub.kind, isDir: false, virtual: true, files: sub.list.length, suburb: true }, targetH: 0.5, depth: 0, district: true };
   slab.receiveShadow = true;
   blocks.add(slab);
   meshes.push(slab);
@@ -645,13 +824,12 @@ function placeSuburb(r) {
     const built = meshes.length > before ? meshes[meshes.length - 1].userData.footprint : null;
     fillLot(lr, built);
   }
-  // Suburb sign at the front edge; building labels on the biggest items.
-  // Suburb signs are off (Angus found them distracting); names still show in the legend and menu.
+  // Name label on each category building.
   for (const lr of lotRects.slice(0, 3)) {
     if (lr.w * lr.h > 40) {
       // Use the height actually built (landmarks are capped), not the raw size.
       const bh = lr.builtH || heightFor(lr.item.item.size);
-      addLabel(lr.item.item, lr.x + lr.w / 2, 1.1 + bh + (bh > 30 ? bh * 0.55 : 2), lr.y + lr.h / 2, Math.min(lr.w + 6, 26));
+      addLabel(lr.item.item, lr.x + lr.w / 2, 1.1 + bh + (bh > 30 ? bh * 0.2 : 2), lr.y + lr.h / 2, Math.min(lr.w + 6, 26));
     }
   }
 }
@@ -671,8 +849,8 @@ function placeBuilding(r, depth, gap) {
   if (landmark === 'library') h = Math.min(h, 17);
   if (LANDMARK_MAX_H[landmark]) h = Math.min(h, LANDMARK_MAX_H[landmark]);
   const plain = { library: 0xe9e2d0, tip: 0x7a6a58, studio: 0xd8cfbe, market: 0xd8d2c6 };
-  const mat = plain[landmark] ? new THREE.MeshStandardMaterial({ color: plain[landmark], roughness: 0.9 }) : facadeMaterial(item.kind, w, h, d, Math.floor(Math.random() * 4));
   const style = landmark && landmark !== 'music' ? null : styleFor(item, h, Math.min(w, d));
+  const mat = plain[landmark] ? new THREE.MeshStandardMaterial({ color: plain[landmark], roughness: 0.9 }) : facadeMaterial(item.kind, w, h, d, Math.floor(Math.random() * 6), style);
   if (style) applyStyleTint(mat, style);
   const b = new THREE.Mesh(boxGeo, mat);
   b.position.set(r.x + r.w / 2, 1.1, r.y + r.h / 2);
@@ -697,6 +875,7 @@ function placeBuilding(r, depth, gap) {
   else if (landmark === 'market') decorateMarket(b, w, h, d);
   else if (style && style !== 'default') decorateStyled(b, w, h, d, style);
   else decorate(b, w, h, d);
+  if (!landmark || landmark === 'music') facadeDetail(b, w, d, style || 'default');
   if (landmark === 'music' && w > 1.8) guitarSign(b, w, h, d);
   activeBuilding = null;
   b.userData.footprint = { x: b.position.x, z: b.position.z, w, d };
@@ -717,6 +896,8 @@ function piece(geo, mat, x, y, z, sx, sy, sz, shadow = true) {
     m.userData.pop = 0;
     m.scale.set(0, 0, 0);
     activeBuilding.userData.pieces.push(m);
+    m.userData.owner = activeBuilding;
+    pickExtras.push(m);
   }
   m.castShadow = shadow;
   m.receiveShadow = true;
@@ -726,7 +907,9 @@ function piece(geo, mat, x, y, z, sx, sy, sz, shadow = true) {
 }
 
 // Folders with a well-known role get a landmark instead of a generic tower.
+const CATEGORY_LANDMARK = { video: 'studio', photos: 'studio', music: 'music', trash: 'tip', system: 'factory', downloads: 'apartments', desktop: 'market', library: 'library' };
 function landmarkFor(item) {
+  if (item.category) return CATEGORY_LANDMARK[item.category] || null;
   const n = (item.name || '').toLowerCase();
   if (item.virtual && item.kind === 'system') return 'factory';
   if (!item.isDir) return null;
@@ -770,6 +953,10 @@ function textSign(text, x, y, z, w, h, bg = '#1d2230', fg = '#ffffff', opts = {}
   m.material.userData = { dayI: 0.15, nightI: 1.4, th: 0.5 };
   m.position.set(x, y, z);
   if (opts.rotY) m.rotation.y = opts.rotY;
+  if (activeBuilding) {
+    m.userData.owner = activeBuilding;
+    pickExtras.push(m);
+  }
   blocks.add(m);
   extras.push(m);
   return m;
@@ -787,13 +974,17 @@ const stackMat = new THREE.MeshStandardMaterial({ color: 0x6b6f76, roughness: 0.
 const gullMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
 const smokeMat = new THREE.SpriteMaterial({ map: glowTex, color: 0x8d939c, transparent: true, opacity: 0.85, depthWrite: false });
 const beamMat2 = new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
-const awningStripes = [0xd94f4f, 0x2b6cb0, 0xf6c90e, 0x35c77d, 0xf72585];
+const awningStripes = [0xb9583c, 0xeadfcb, 0x9a3f2e, 0xd8b28a, 0x7a4a3a];
 const beamGeo = new THREE.CylinderGeometry(1.6, 0.25, 1, 12, 1, true);
 beamGeo.translate(0, 0.5, 0);
 
 function addGroup(x, y, z) {
   const g = new THREE.Group();
   g.position.set(x, y, z);
+  if (activeBuilding) {
+    g.userData.owner = activeBuilding;
+    pickExtras.push(g);
+  }
   blocks.add(g);
   extras.push(g);
   return g;
@@ -983,13 +1174,13 @@ function decorateApartments(b, w, h, d) {
   for (let f = 1; f < floors; f++) {
     const y = base + f * 2.4;
     for (const [sx, sz, bw, bd] of [[0, 1, w * 0.8, 0.5], [0, -1, w * 0.8, 0.5], [1, 0, 0.5, d * 0.8], [-1, 0, 0.5, d * 0.8]]) {
-      const col = propMat(PROP_COLORS[(f + sx + sz * 2 + 10) % PROP_COLORS.length]);
+      const col = propMat(WARM[(f + sx + sz * 2 + 10) % WARM.length]);
       piece(boxGeo, whiteMat, x + (sx * (w + 0.5)) / 2, y, z + (sz * (d + 0.5)) / 2, bw, 0.12, bd, false);
       piece(boxGeo, col, x + (sx * (w + 0.95)) / 2, y + 0.12, z + (sz * (d + 0.95)) / 2, sx ? 0.06 : bw, 0.6, sz ? 0.06 : bd, false);
     }
     if (f % 2 === 0) {
       // Washing line with a few bright clothes on the front balcony.
-      for (let k = -2; k <= 2; k++) piece(boxGeo, propMat(PROP_COLORS[(k + f + 7) % PROP_COLORS.length]), x + k * w * 0.15, y + 0.8, z + d / 2 + 0.3, 0.3, 0.4, 0.04, false);
+      for (let k = -2; k <= 2; k++) piece(boxGeo, propMat(WARM[(k + f + 7) % WARM.length]), x + k * w * 0.15, y + 0.8, z + d / 2 + 0.3, 0.3, 0.4, 0.04, false);
     }
   }
   piece(boxGeo, trimMaterial(b.material), x, top - 0.1, z, w + 0.2, 0.2, d + 0.2);
@@ -1175,7 +1366,7 @@ function decorateLibrary(b, w, h, d, fullH) {
 // plain box takes; the rest is tiers, crowns and spires.
 // ---------------------------------------------------------------------------
 const STYLE_SHAFT = { default: 1, deco: 0.62, chrysler: 0.7, stepped: 0.5, glass: 1, twin: 1, brick: 1, modern: 1, civic: 1, shop: 1 };
-const STYLE_TINT = { deco: 0xf0e3c6, chrysler: 0xd9d6cc, stepped: 0xd2743f, glass: 0x4f7a9a, twin: 0x8fb0c8, brick: 0xb0553c, modern: 0xf3efe6, civic: 0xe8dcc0, shop: 0xe39a5a };
+const STYLE_TINT = { deco: 0xeadfcb, chrysler: 0xd9cbb5, stepped: 0xc0694a, glass: 0xb7aea3, twin: 0xc9bfb3, brick: 0xa84a35, modern: 0xe6dccb, civic: 0xeadfcb, shop: 0xd4805f };
 function hashName(name) {
   let h = 2166136261;
   for (let i = 0; i < name.length; i++) h = Math.imul(h ^ name.charCodeAt(i), 16777619);
@@ -1194,8 +1385,9 @@ function applyStyleTint(mat, style) {
   if (tint === undefined) return;
   mat.color.lerp(new THREE.Color(tint), 0.55);
   if (style === 'glass' || style === 'twin') {
-    mat.metalness = 0.45;
-    mat.roughness = 0.3;
+    // Curtain-wall glass: shiny enough to mirror the sky and sun (see skyEnv).
+    mat.metalness = 0.7;
+    mat.roughness = 0.12;
   }
 }
 const terracottaRoof = new THREE.MeshStandardMaterial({ color: 0xb8432f, roughness: 0.85 });
@@ -1332,6 +1524,76 @@ function decorateStyled(b, w, h, d, style) {
   }
 }
 
+// Shared facade detail on top of each style: shopfronts with awnings at
+// street level, corner quoins and floor ledges on masonry, fins on glass,
+// balconies on concrete. Front (+z) and right (+x) faces are the ones the
+// camera sees, so the detail goes there.
+const shopGlassMat = new THREE.MeshStandardMaterial({ color: 0x3b3633, roughness: 0.1, metalness: 0.7 });
+const frameMat = new THREE.MeshStandardMaterial({ color: 0x2d3038, roughness: 0.6, metalness: 0.3 });
+const railMat = new THREE.MeshStandardMaterial({ color: 0xbfe3f0, roughness: 0.1, metalness: 0.5, transparent: true, opacity: 0.55 });
+const awningMats = awningStripesMats();
+function awningStripesMats() {
+  return [0xb9583c, 0x7a4a3a, 0xeadfcb, 0x9a3f2e, 0x5f5a54].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 }));
+}
+function facadeDetail(b, w, d, style) {
+  const x = b.position.x;
+  const z = b.position.z;
+  const base = 1.1;
+  const shaft = b.userData.targetH;
+  const minSide = Math.min(w, d);
+  if (minSide < 1.6 || shaft < 4) return;
+  const trim = trimMaterial(b.material);
+  const fk = STYLE_FACADE[style] || 'office';
+  const faces = [
+    { nx: 0, nz: 1, len: w, at: z + d / 2, along: (t) => [x + t, null] }, // front
+    { nx: 1, nz: 0, len: d, at: x + w / 2, along: (t) => [null, z + t] }, // right
+  ];
+  const put = (f, geo, mat, t, y, out, sAlong, sy, sOut, shadow = false) => {
+    if (f.nz) piece(geo, mat, x + t, y, f.at + out, sAlong, sy, sOut, shadow);
+    else piece(geo, mat, f.at + out, y, z + t, sOut, sy, sAlong, shadow);
+  };
+  // Street level: shop windows, mullions and a striped awning per bay.
+  const shopH = Math.min(1.5, shaft * 0.14);
+  for (const f of faces) {
+    const bays = Math.max(1, Math.floor(f.len / 1.8));
+    const bw = f.len / bays;
+    for (let i = 0; i < bays; i++) {
+      const t = -f.len / 2 + bw * (i + 0.5);
+      if (f.nz && bays > 1 && i === Math.floor(bays / 2)) continue; // the entrance bay
+      put(f, boxGeo, shopGlassMat, t, base + 0.15, 0.07, bw * 0.78, shopH * 0.8, 0.06);
+      put(f, boxGeo, frameMat, t, base + 0.15 + shopH * 0.8, 0.09, bw * 0.84, 0.08, 0.08);
+      if (Math.random() < 0.7) put(f, boxGeo, awningMats[Math.floor(Math.random() * awningMats.length)], t, base + shopH * 0.95, 0.32, bw * 0.8, 0.07, 0.55, true);
+    }
+  }
+  if (fk === 'brick' || fk === 'stone' || fk === 'office') {
+    // Corner quoins / pilasters, full height.
+    for (const [cx, cz] of [[1, 1], [1, -1], [-1, 1]]) piece(boxGeo, trim, x + cx * (w / 2 + 0.02), base, z + cz * (d / 2 + 0.02), 0.32, shaft, 0.32);
+    // Floor ledges every few storeys.
+    const step = fk === 'office' ? 7.8 : 5.2;
+    for (let y = base + shopH + 0.2; y < base + shaft - 1.5; y += step) {
+      for (const f of faces) put(f, boxGeo, trim, 0, y, 0.05, f.len + 0.12, 0.16, 0.14);
+    }
+  } else if (fk === 'glass') {
+    // Vertical aluminium fins catch the sun.
+    for (const f of faces) {
+      const n = Math.max(2, Math.floor(f.len / 1.25));
+      for (let i = 1; i < n; i++) put(f, boxGeo, spireMat, -f.len / 2 + (i * f.len) / n, base + shopH, 0.08, 0.07, shaft - shopH, 0.16);
+    }
+  } else if (fk === 'concrete') {
+    // Balconies with glass rails on some floors.
+    const f = faces[0];
+    const cols = Math.max(1, Math.floor(f.len / 2.2));
+    for (let y = base + shopH + 2.6; y < base + shaft - 1.5; y += 2.6) {
+      for (let i = 0; i < cols; i++) {
+        if (Math.random() < 0.35) continue;
+        const t = -f.len / 2 + (f.len / cols) * (i + 0.5);
+        put(f, boxGeo, whiteMat, t, y, 0.35, 1.3, 0.1, 0.7, true);
+        put(f, boxGeo, railMat, t, y + 0.1, 0.68, 1.3, 0.45, 0.04);
+      }
+    }
+  }
+}
+
 function decorate(b, w, h, d) {
   const x = b.position.x;
   const z = b.position.z;
@@ -1417,6 +1679,8 @@ function decorate(b, w, h, d) {
 // no block is a blank slab (parking, cafés, kiosks, gardens, playgrounds…).
 // ---------------------------------------------------------------------------
 const CELL = 3.0;
+// Warm palette from the reference city, for building trim and balconies.
+const WARM = [0xb9583c, 0xeadfcb, 0xd8b28a, 0xa84a35, 0xd4805f, 0x8f6f5e];
 const PROP_COLORS = [0xff6b6b, 0xffd166, 0x4cc9f0, 0x4361ee, 0x90be6d, 0xff9f1c];
 const propMats = {};
 function propMat(hex) {
@@ -2537,6 +2801,8 @@ function addLabel(item, x, y, z, width, sign = false) {
     sprite.material.opacity = nightStyle ? nightK : 1 - nightK;
     blocks.add(sprite);
     extras.push(sprite);
+    sprite.userData.labelItem = item;
+    pickExtras.push(sprite);
     pair[nightStyle ? 'night' : 'day'] = sprite;
   }
   labelPairs.push(pair);
@@ -2570,28 +2836,26 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 renderer.domElement.addEventListener('pointerdown', (e) => (downAt = [e.clientX, e.clientY]));
 renderer.domElement.addEventListener('click', (e) => {
   if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4) return;
-  if (hovered && !hovered.userData.district) openMenu(hovered.userData.item, e.clientX, e.clientY);
-  else closeMenu();
+  const it = hovered && !hovered.userData.district ? hovered.userData.item : null;
+  if (it && it.category) openCategory(state.open === it.category ? null : it.category); // click again to deselect
+  else if (it && it.virtual) toast(`${it.name}: ${fmt(it.size)}`);
+  else if (state.open) openCategory(null);
 });
-renderer.domElement.addEventListener('dblclick', () => {
-  closeMenu();
-  if (!hovered && state.path.length) {
-    state.path.pop();
-    layout();
-  }
-});
-
-function relativePath(item) {
-  // Find the folder by walking from the current node, one or two levels down.
-  const node = currentNode();
-  for (const c of node.children || []) if (c === item) return [...state.path, c.name];
-  return null;
-}
 
 function updateHover() {
   raycaster.setFromCamera(pointer, camera);
-  const hits = raycaster.intersectObjects(meshes, false);
-  const hit = hits.length ? hits[0].object : null;
+  const hits = raycaster.intersectObjects([...meshes, ...pickExtras], true);
+  let hit = null;
+  for (const h of hits) {
+    let o = h.object;
+    if (o.isSprite && !o.material.opacity) continue; // the hidden day/night twin of a label
+    while (o && !o.userData.owner && !o.userData.labelItem && !meshes.includes(o)) o = o.parent;
+    if (!o) continue;
+    if (o.userData.owner) hit = o.userData.owner;
+    else if (o.userData.labelItem) hit = meshes.find((m) => !m.userData.district && m.userData.item === o.userData.labelItem) || null;
+    else hit = o;
+    if (hit) break;
+  }
   if (hit !== hovered) {
     // Highlight by lightening the facade colour; emissive is reserved for lit windows.
     if (hovered && hovered.userData.hoverColor) {
@@ -2605,9 +2869,9 @@ function updateHover() {
         hovered.material.color.offsetHSL(0, 0, 0.14);
       }
       const it = hovered.userData.item;
-      tooltip.innerHTML = `<b>${esc(it.name)}</b>${fmt(it.size)} · ${KIND_LABELS[it.kind] || it.kind}${it.files ? ` · ${it.files.toLocaleString()} files` : ''}${it.isDir ? ' · click to open' : ''}<div class="path">${esc(it.path || '')}</div>`;
+      tooltip.innerHTML = `<b>${esc(it.name)}</b>${fmt(it.size)} · ${KIND_LABELS[it.kind] || it.kind}${it.files ? ` · ${it.files.toLocaleString()} files` : ''}${it.category ? ' · click to see files' : ''}<div class="path">${esc(it.path || '')}</div>`;
       tooltip.hidden = false;
-      renderer.domElement.style.cursor = it.isDir ? 'pointer' : 'default';
+      renderer.domElement.style.cursor = it.category ? 'pointer' : 'default';
     } else {
       tooltip.hidden = true;
       renderer.domElement.style.cursor = 'default';
@@ -2615,80 +2879,27 @@ function updateHover() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Context menu at the cursor
-// ---------------------------------------------------------------------------
 const menu = document.getElementById('menu');
-let menuItem = null;
 function closeMenu() {
   menu.hidden = true;
-  menuItem = null;
 }
-function openMenu(item, x, y) {
-  menuItem = item;
-  const canDemolish = item.path && !item.aggregate && !item.virtual;
-  const color = '#' + (KIND_COLORS[item.kind] || KIND_COLORS.other).toString(16).padStart(6, '0');
-  const where = item.suburb ? 'Suburb' : SUBURB_NAMES[item.kind] || KIND_LABELS[item.kind] || item.kind;
-  const row = (act, icon, label, sub, cls = '') => `<button data-act="${act}" class="${cls}"><i>${icon}</i><span class="lbl">${label}<small>${sub}</small></span></button>`;
-  menu.innerHTML = `<div class="menu-head" style="--kind:${color}"><span class="swatch"></span><div><b>${esc(item.name)}</b><span>${fmt(item.size)}${item.files ? ` · ${item.files.toLocaleString()} files` : ''} · ${esc(where)}</span></div></div>` +
-    (item.isDir && !item.virtual ? row('open', '🚶', 'Walk in', 'see what is inside') : '') +
-    (state.path.length ? row('leave', '↩', `Leave ${esc(currentNode().name)}`, 'back out to the street') : '') +
-    (item.path && !item.virtual ? row('reveal', '📍', 'Show in Finder', 'open its folder') : '') +
-    (canDemolish ? row('demolish', '🧨', 'Demolish', 'moves it to the Trash', 'demolish') : '') +
-    (!canDemolish ? `<div class="menu-note">${item.suburb ? 'A suburb' : item.virtual ? 'Not a file' : 'Lots of small files'}: walk in to pick what to demolish.</div>` : '');
-  menu.hidden = false;
-  const mw = menu.offsetWidth;
-  const mh = menu.offsetHeight;
-  menu.style.left = Math.min(x + 8, window.innerWidth - mw - 8) + 'px';
-  menu.style.top = Math.min(y + 8, window.innerHeight - mh - 8) + 'px';
-  tooltip.hidden = true;
-}
-menu.addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-act]');
-  const act = btn && btn.dataset.act;
-  if (!act || !menuItem) return;
-  const item = menuItem;
-  if (act === 'open') {
-    const target = relativePath(item);
-    if (target) {
-      state.path = target;
-      layout();
-    }
-  } else if (act === 'leave') {
-    leaveBuilding();
-  } else if (act === 'reveal') {
-    api.reveal(item.path);
-    closeMenu();
-  } else if (act === 'demolish') {
-    menu.innerHTML = `<div class="menu-head" style="--kind:#e5484d"><span class="swatch"></span><div><b>Demolish ${esc(item.name)}?</b><span>${fmt(item.size)} goes to the Trash. You can restore it from there.</span></div></div><button data-act="confirm" class="confirm">🧨 Yes, demolish</button><button data-act="cancel" class="cancel">Keep it</button>`;
-  } else if (act === 'cancel') {
-    closeMenu();
-  } else if (act === 'confirm') {
-    closeMenu();
-    await demolish(item);
-  }
-});
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    if (!menu.hidden) closeMenu();
-    else leaveBuilding();
-  }
-  if (e.key === 'Backspace' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) leaveBuilding();
+  if (e.key === 'Escape' && state.open && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) openCategory(null);
 });
 
 async function demolish(item) {
-  const mesh = meshes.find((m) => m.userData.item === item);
+  const cat = state.city.find((c) => c.children.includes(item));
+  const mesh = cat && meshes.find((m) => m.userData.item === cat);
   const res = await api.trash([item.path]);
   if (pro.handleBlocked(res)) return;
   if (!res.every((r) => r.ok)) {
     toast('Could not move to Trash: ' + (res.find((r) => !r.ok) || {}).error);
     return;
   }
-  // Collapse animation, then update the tree locally (no rescan needed).
-  if (mesh) {
-    mesh.userData.targetH = 0.001;
+  // The category building shrinks, then the tree updates locally (no rescan needed).
+  if (mesh && cat.size > 0) {
     mesh.userData.build = null;
-    for (const pc of mesh.userData.pieces || []) blocks.remove(pc);
+    mesh.userData.targetH *= Math.max(0.05, 1 - item.size / cat.size);
   }
   await new Promise((r) => setTimeout(r, 450));
   removeFromTree(item);
@@ -2699,16 +2910,20 @@ async function demolish(item) {
 }
 
 function removeFromTree(item) {
-  let n = state.tree;
-  const chain = [n];
-  for (const name of state.path) {
-    n = (n.children || []).find((c) => c.name === name && c.isDir);
-    if (!n) return;
-    chain.push(n);
-  }
-  const idx = (n.children || []).indexOf(item);
-  if (idx < 0) return;
-  n.children.splice(idx, 1);
+  // Find the chain of folders from the root down to the item's parent.
+  const find = (n, chain) => {
+    const kids = n.children || [];
+    if (kids.includes(item)) return chain.concat(n);
+    for (const c of kids) {
+      const r = c.isDir && find(c, chain.concat(n));
+      if (r) return r;
+    }
+    return null;
+  };
+  const chain = find(state.tree, []);
+  if (!chain) return;
+  const n = chain[chain.length - 1];
+  n.children.splice(n.children.indexOf(item), 1);
   for (const anc of chain) {
     anc.size -= item.size;
     anc.files -= item.files || 0;
@@ -2734,6 +2949,7 @@ function animate() {
   updateLife(dt, t);
   if (site) updateSite(dt, t);
   stepNight(dt);
+  stepFocus(dt);
   if (seasons) seasons.step(dt, t);
   if (nightK >= 1) stars.material.opacity = 0.78 + 0.2 * Math.sin(t * 2.3);
   for (const c of clouds.children) {
@@ -2817,47 +3033,104 @@ function renderDisk() {
 
 function renderCrumbs() {
   const el = $('crumbs');
-  el.innerHTML = '';
-  if (!state.tree) return;
-  const parts = [state.tree.name, ...state.path];
-  parts.forEach((name, i) => {
-    if (i) {
-      const sep = document.createElement('span');
-      sep.className = 'sep';
-      sep.textContent = ' › ';
-      el.appendChild(sep);
+  el.textContent = state.tree ? state.tree.name : '';
+}
+
+// Files tab: the list of categories, or the files in the one you clicked.
+// Folders open in place (no walking inside buildings).
+const hexColor = (k) => '#' + (KIND_COLORS[k] || KIND_COLORS.other).toString(16).padStart(6, '0');
+function openCategory(id) {
+  state.open = id;
+  setFocus(id ? meshes.find((m) => !m.userData.district && m.userData.item.category === id) : null);
+  renderFiles();
+  if (!id) return;
+  setPanel(true);
+  showTab('files');
+}
+function renderFiles() {
+  const wrap = $('files');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  const cat = state.open && state.city.find((c) => c.category === state.open);
+  if (!cat) {
+    state.open = null;
+    $('files-head').innerHTML = `<span>Your city</span><span class="muted">${state.city.length} buildings</span>`;
+    const ul = document.createElement('ul');
+    ul.className = 'file-list';
+    for (const c of state.city) {
+      const li = document.createElement('li');
+      li.className = 'cat-row';
+      li.innerHTML = `<span class="dot" style="background:${hexColor(c.kind)}"></span><span class="name">${esc(c.name)}</span><span class="size">${fmt(c.size)}</span>`;
+      li.onclick = () => openCategory(c.category);
+      ul.appendChild(li);
     }
-    const a = document.createElement(i === parts.length - 1 ? 'span' : 'a');
-    a.textContent = name;
-    if (i === parts.length - 1) a.className = 'here';
-    else a.onclick = () => {
-      state.path = state.path.slice(0, i);
-      layout();
-    };
-    el.appendChild(a);
-  });
-}
-
-function renderTop(node) {
-  const ol = $('top-list');
-  ol.innerHTML = '';
-  for (const c of (node.children || []).slice(0, 12)) {
-    const li = document.createElement('li');
-    li.innerHTML = `<span class="dot" style="background:#${(KIND_COLORS[c.kind] || KIND_COLORS.other).toString(16).padStart(6, '0')}"></span><span class="name">${esc(c.name)}</span><span class="size">${fmt(c.size)}</span>`;
-    li.title = c.path || '';
-    li.onclick = () => {
-      if (c.isDir) {
-        state.path = [...state.path, c.name];
-        layout();
-      } else if (c.path && !c.aggregate) api.reveal(c.path);
-    };
-    ol.appendChild(li);
+    wrap.appendChild(ul);
+    return;
   }
+  $('files-head').innerHTML = `<button class="link" id="files-back">‹ All</button><span class="cat-title"><span class="dot" style="background:${hexColor(cat.kind)}"></span>${esc(cat.name)}</span><span class="muted">${fmt(cat.size)}</span>`;
+  $('files-back').onclick = () => openCategory(null);
+  wrap.appendChild(fileList(cat.children, true));
+}
+function fileList(items, top) {
+  const ul = document.createElement('ul');
+  ul.className = 'file-list';
+  for (const it of items.slice(0, 200)) {
+    const li = document.createElement('li');
+    const canOpen = it.isDir && (it.children || []).length > 0;
+    const canDemolish = it.path && !it.aggregate && !it.virtual;
+    const sub = top && it.rel && it.rel !== it.name ? `<small>${esc(it.rel.slice(0, -it.name.length - 1))}</small>` : '';
+    li.innerHTML = `<div class="row"><span class="chev">${canOpen ? '›' : ''}</span><span class="icon">${it.isDir ? '📁' : it.aggregate ? '🗂' : '📄'}</span><span class="name" title="${esc(it.path || '')}">${esc(it.name)}${sub}</span><span class="size">${fmt(it.size)}</span></div>`;
+    const row = li.firstChild;
+    // Clicking a row picks it and shows its actions underneath (folders also open).
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+    const showActions = () => {
+      actions.innerHTML =
+        (it.path && !it.virtual ? `<button data-act="reveal">📍 Show in Finder</button>` : '') +
+        (canDemolish ? `<button data-act="demolish" class="demolish">🧨 Demolish</button>` : `<span class="muted">${it.aggregate ? 'Lots of small files: open the folder in Finder to pick.' : ''}</span>`);
+    };
+    actions.onclick = async (e) => {
+      const act = e.target.closest('[data-act]');
+      if (!act) return;
+      if (act.dataset.act === 'reveal') api.reveal(it.path);
+      else if (act.dataset.act === 'demolish') actions.innerHTML = `<button data-act="confirm" class="demolish">Yes, demolish ${fmt(it.size)}</button><button data-act="keep">Keep it</button>`;
+      else if (act.dataset.act === 'keep') showActions();
+      else if (act.dataset.act === 'confirm') await demolish(it);
+    };
+    row.onclick = () => {
+      const picked = !li.classList.contains('picked');
+      for (const o of document.querySelectorAll('#files li.picked')) {
+        if (o === li) continue;
+        o.classList.remove('picked');
+        const bar = o.querySelector(':scope > .row-actions');
+        if (bar) bar.remove();
+      }
+      li.classList.toggle('picked', picked);
+      if (picked) {
+        showActions();
+        row.after(actions);
+      } else actions.remove();
+      if (!canOpen) return;
+      li.classList.toggle('open', picked);
+      if (picked && !li.querySelector('ul')) li.appendChild(fileList(it.children, false));
+    };
+    ul.appendChild(li);
+  }
+  if (items.length > 200) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = `…and ${items.length - 200} more`;
+    ul.appendChild(li);
+  }
+  return ul;
 }
 
+// Safe Clean tab: one button, only things that are always safe to clear.
+const SAFE_GROUPS = [
+  ['caches', '🧹 Caches & temp files', 'Apps rebuild them when needed.'],
+  ['trash', '🗑 Trash / Recycle Bin', 'Things you already deleted, not yet emptied.'],
+];
 const GROUPS = [
-  ['caches', 'Caches & temp files', 'Safe to clear; apps rebuild them.', 'empty'],
-  ['trash', 'Trash / Recycle Bin', 'Already deleted by you; just not emptied.', 'empty'],
   ['oldDownloads', 'Old downloads & installers', 'Untouched for 60+ days.', 'trash'],
   ['largeStale', 'Large files not opened in 6 months', 'Over 500 MB. Check before removing.', 'trash'],
 ];
@@ -2895,7 +3168,29 @@ function buildGroup(g, title, desc, mode, open) {
   return det;
 }
 
+function renderSafe() {
+  const list = $('safe-list');
+  const btn = $('btn-safe');
+  if (!list) return;
+  const groups = state.suggestions ? SAFE_GROUPS.map(([k, t, d]) => [state.suggestions[k], t, d]).filter(([g]) => g && g.items.length) : [];
+  const total = groups.reduce((n, [g]) => n + g.total, 0);
+  $('safe-total').textContent = state.suggestions ? fmt(total) : '—';
+  $('safe-sub').textContent = !state.suggestions ? 'Scan your files to see what can go.' : total ? 'can be cleared safely right now' : 'Nothing to clear. Your city is spotless.';
+  list.innerHTML = groups.map(([g, t, d]) => `<li><span class="name"><b>${t}</b><small>${d}</small></span><span class="size">${fmt(g.total)}</span></li>`).join('');
+  btn.disabled = !total;
+  btn.textContent = total ? `Safe clean · free ${fmt(total)}` : 'Safe clean';
+}
+$('btn-safe').onclick = async () => {
+  if (!state.suggestions) return;
+  const items = SAFE_GROUPS.flatMap(([k]) => (state.suggestions[k] ? state.suggestions[k].items : [])).map((it) => ({ ...it, mode: 'empty' }));
+  if (!items.length) return;
+  $('btn-safe').disabled = true;
+  $('btn-safe').textContent = 'Cleaning…';
+  await moveToTrash(items);
+};
+
 function renderClean() {
+  renderSafe();
   const wrap = $('clean-groups');
   wrap.innerHTML = '';
   state.selected.clear();
@@ -2929,6 +3224,9 @@ $('btn-trash').onclick = async () => {
   const btn = $('btn-trash');
   btn.disabled = true;
   btn.textContent = 'Moving to Trash…';
+  await moveToTrash(items);
+};
+async function moveToTrash(items) {
   let freed = 0;
   let failed = 0;
   let capped = null;
@@ -2945,16 +3243,11 @@ $('btn-trash').onclick = async () => {
   if (capped) pro.showUpgrade('cap', capped);
   if (!freed && !failed) {
     updateTrashButton();
+    renderSafe();
     return;
   }
   toast(`Moved ${fmt(freed)} to Trash${failed ? ` · ${failed} failed` : ''}${capped ? ' · free limit reached' : ''}. Empty the Trash to reclaim the space.`);
   await runScan(state.tree ? state.tree.path : null);
-};
-
-function renderLegend() {
-  $('legend').innerHTML = Object.entries(KIND_LABELS)
-    .map(([k, l]) => `<span><span class="dot" style="background:#${KIND_COLORS[k].toString(16).padStart(6, '0')}"></span><b>${SUBURB_NAMES[k]}</b><small>${l}</small></span>`)
-    .join('');
 }
 
 // ---------------------------------------------------------------------------
@@ -3019,7 +3312,7 @@ async function runScan(root) {
     const { tree, suggestions } = await api.scan(root || undefined);
     state.tree = tree;
     state.suggestions = suggestions;
-    state.path = [];
+    state.open = null;
     state.disk = await api.diskInfo();
     renderDisk();
     renderClean();
@@ -3044,7 +3337,6 @@ $('btn-pick').onclick = async () => {
   else if (DEMO) toast('Demo mode: folder picker is only available in the desktop app');
 };
 
-$('btn-leave').onclick = leaveBuilding;
 $('btn-night').onclick = toggleNight;
 // Side panel: collapsed by default, remembered per browser.
 function setPanel(open) {
@@ -3060,13 +3352,14 @@ try {
 } catch {}
 setPanel(panelOpen);
 $('btn-panel').onclick = () => setPanel($('panel').classList.contains('collapsed'));
+function showTab(name) {
+  for (const t of $('tabs').children) t.classList.toggle('active', t.dataset.tab === name);
+  for (const page of document.querySelectorAll('.tab-page')) page.hidden = page.id !== 'tab-' + name;
+}
 $('tabs').addEventListener('click', (e) => {
   const tab = e.target.closest('.tab');
-  if (!tab) return;
-  for (const t of $('tabs').children) t.classList.toggle('active', t === tab);
-  for (const page of document.querySelectorAll('.tab-page')) page.hidden = page.id !== 'tab-' + tab.dataset.tab;
+  if (tab) showTab(tab.dataset.tab);
 });
-renderLegend();
 pro = initPro({ api, state, fmt, esc, toast, buildGroup, rerender: () => renderClean(), DEMO });
 seasons = initSeasons({
   THREE,
@@ -3092,4 +3385,4 @@ if (DEMO) {
 }
 
 // Exposed for automated UI checks.
-window.__storageSaver = { state, openMenu, layout, toggleNight, buildSite, setScanProgress, pro, seasons, camera, controls, blocks };
+window.__storageSaver = { state, openCategory, layout, toggleNight, buildSite, setScanProgress, pro, seasons, camera, controls, blocks };
