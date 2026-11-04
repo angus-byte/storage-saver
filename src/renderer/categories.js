@@ -2,24 +2,25 @@
 // shows one building per category; clicking it lists what is inside.
 // Pure functions (no DOM), so the tests can import this module directly.
 
+// Colours follow the reference city: terracotta, brick, salmon, sand, cream and warm greys.
 export const CATEGORIES = [
-  { id: 'video', label: 'Movies & Video', color: 0x6f9fe6 },
-  { id: 'photos', label: 'Photos & Images', color: 0x5fc4d9 },
-  { id: 'music', label: 'Music & Audio', color: 0xd77fc7 },
-  { id: 'documents', label: 'Documents', color: 0xe9cf78 },
-  { id: 'downloads', label: 'Downloads', color: 0xb48fe3 },
-  { id: 'desktop', label: 'Desktop', color: 0xf0a96b },
-  { id: 'apps', label: 'Applications', color: 0x72c995 },
-  { id: 'dev', label: 'Developer & Code', color: 0x8b8fe8 },
-  { id: 'cloud', label: 'Cloud Drives', color: 0x9cc8f0 },
-  { id: 'backups', label: 'Phone & Backups', color: 0xc9a27a },
-  { id: 'mail', label: 'Mail & Messages', color: 0xef8a8a },
-  { id: 'archives', label: 'Archives & Installers', color: 0xa98ad6 },
-  { id: 'cache', label: 'Caches & Temp', color: 0xe8935a },
-  { id: 'library', label: 'App Data & Settings', color: 0xbfb8a6 },
-  { id: 'system', label: 'System', color: 0x8d96a6 },
-  { id: 'trash', label: 'Trash', color: 0xaab0ba },
-  { id: 'other', label: 'Other Files', color: 0xe3ddd0 },
+  { id: 'video', label: 'Movies & Video', color: 0xeadfcb },
+  { id: 'photos', label: 'Photos & Images', color: 0xd4805f },
+  { id: 'music', label: 'Music & Audio', color: 0x9c5a46 },
+  { id: 'documents', label: 'Documents', color: 0xd8b28a },
+  { id: 'downloads', label: 'Downloads', color: 0xb9583c },
+  { id: 'desktop', label: 'Desktop', color: 0xe0a07c },
+  { id: 'apps', label: 'Applications', color: 0xd9d2c5 },
+  { id: 'dev', label: 'Developer & Code', color: 0x8f6f5e },
+  { id: 'cloud', label: 'Cloud Drives', color: 0xb7aea3 },
+  { id: 'backups', label: 'Phone & Backups', color: 0xc49a74 },
+  { id: 'mail', label: 'Mail & Messages', color: 0xdc9474 },
+  { id: 'archives', label: 'Archives & Installers', color: 0xc0694a },
+  { id: 'cache', label: 'Caches & Temp', color: 0xcf7a54 },
+  { id: 'library', label: 'App Data & Settings', color: 0xe6d6bd },
+  { id: 'system', label: 'System', color: 0x9d968e },
+  { id: 'trash', label: 'Trash', color: 0xa59a8e },
+  { id: 'other', label: 'Other Files', color: 0xd6c7b4 },
 ];
 export const CATEGORY_BY_ID = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]));
 

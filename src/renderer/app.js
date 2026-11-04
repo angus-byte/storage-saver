@@ -320,7 +320,7 @@ const barrelGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 28);
 barrelGeo.translate(0, 0.5, 0);
 const pavementMat = new THREE.MeshStandardMaterial({ color: 0xdedbd3, roughness: 0.9 });
 const parkMat = new THREE.MeshStandardMaterial({ color: 0x8ccf76, roughness: 0.95 });
-const roofMat = new THREE.MeshStandardMaterial({ color: 0xb8bcc4, roughness: 0.7 });
+const roofMat = new THREE.MeshStandardMaterial({ color: 0xc8734e, roughness: 0.75 }); // terracotta caps, as in the reference
 const spireMat = new THREE.MeshStandardMaterial({ color: 0xdfe3e8, metalness: 0.5, roughness: 0.3 });
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 1 });
 const canopyMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
@@ -446,7 +446,7 @@ function makeFacade(kind, seed) {
       for (let x = 0; x < 8; x++) win(x * C + 8, y * C + 4, 16, 19, 'rgba(60,52,40,0.55)');
     }
   } else if (kind === 'glass') {
-    both('#9fb8c8', '#202020', 0, 0, S, S);
+    both('#c9c2b8', '#202020', 0, 0, S, S);
     const g = c.createLinearGradient(0, 0, S, S);
     g.addColorStop(0, 'rgba(255,255,255,0.35)');
     g.addColorStop(0.5, 'rgba(255,255,255,0)');
@@ -454,14 +454,14 @@ function makeFacade(kind, seed) {
     for (let y = 0; y < 8; y++)
       for (let x = 0; x < 8; x++) {
         const v = rnd();
-        c.fillStyle = v < 0.12 ? 'rgba(255,236,190,0.55)' : v < 0.5 ? 'rgba(70,104,132,0.7)' : 'rgba(40,64,92,0.75)';
+        c.fillStyle = v < 0.12 ? 'rgba(255,236,190,0.55)' : v < 0.5 ? 'rgba(88,92,98,0.7)' : 'rgba(58,62,70,0.75)';
         c.fillRect(x * C + 2, y * C + 2, C - 4, C - 4);
       }
     c.fillStyle = g;
     c.fillRect(0, 0, S, S);
     for (let i = 0; i <= S; i += C) {
-      both('rgba(225,232,238,0.95)', '#d0d0d0', i - 2, 0, 4, S); // mullions
-      both('rgba(225,232,238,0.95)', '#d0d0d0', 0, i - 2, S, 4); // transoms
+      both('rgba(240,232,220,0.95)', '#d0d0d0', i - 2, 0, 4, S); // mullions
+      both('rgba(240,232,220,0.95)', '#d0d0d0', 0, i - 2, S, 4); // transoms
     }
     for (let i = C / 2; i < S; i += C) both('rgba(225,232,238,0.5)', '#909090', i - 0.5, 0, 1, S);
   } else if (kind === 'concrete') {
@@ -518,16 +518,20 @@ function facadeMaterial(kind, w, h, d, variant = 0, style = null) {
   mat.userData.th = 0.35 + Math.random() * 0.6;
   return mat;
 }
+// Trim (cornices, ledges, quoins, podiums) is a much darker, warmer shade of
+// the facade, like the reference city's brown-red bands on cream and brick.
+const TRIM_BROWN = new THREE.Color(0x5e3326);
 function trimMaterial(base) {
   const c = base.color.clone();
   const hsl = {};
   c.getHSL(hsl);
-  c.setHSL(hsl.h, hsl.s * 0.8, Math.max(0.15, hsl.l * 0.72));
-  return new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 });
+  c.setHSL(hsl.h, Math.min(1, hsl.s * 1.05), Math.max(0.12, hsl.l * 0.5));
+  c.lerp(TRIM_BROWN, 0.35);
+  return new THREE.MeshStandardMaterial({ color: c, roughness: 0.75 });
 }
-const glassMat = new THREE.MeshStandardMaterial({ color: 0x9fd3e8, roughness: 0.08, metalness: 0.75 });
+const glassMat = new THREE.MeshStandardMaterial({ color: 0x9aa4a6, roughness: 0.08, metalness: 0.75 });
 const darkMat = new THREE.MeshStandardMaterial({ color: 0x2b3240, roughness: 0.8 });
-const awningMat = new THREE.MeshStandardMaterial({ color: 0xd94f4f, roughness: 0.9 });
+const awningMat = new THREE.MeshStandardMaterial({ color: 0xa84a35, roughness: 0.9 });
 const tankMat = new THREE.MeshStandardMaterial({ color: 0x8a6a4e, roughness: 0.9 });
 const acMat = new THREE.MeshStandardMaterial({ color: 0xcfd4da, roughness: 0.8 });
 const poleMat = new THREE.MeshStandardMaterial({ color: 0x5a6068, roughness: 0.6, metalness: 0.5 });
@@ -970,7 +974,7 @@ const stackMat = new THREE.MeshStandardMaterial({ color: 0x6b6f76, roughness: 0.
 const gullMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
 const smokeMat = new THREE.SpriteMaterial({ map: glowTex, color: 0x8d939c, transparent: true, opacity: 0.85, depthWrite: false });
 const beamMat2 = new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
-const awningStripes = [0xd94f4f, 0x2b6cb0, 0xf6c90e, 0x35c77d, 0xf72585];
+const awningStripes = [0xb9583c, 0xeadfcb, 0x9a3f2e, 0xd8b28a, 0x7a4a3a];
 const beamGeo = new THREE.CylinderGeometry(1.6, 0.25, 1, 12, 1, true);
 beamGeo.translate(0, 0.5, 0);
 
@@ -1170,13 +1174,13 @@ function decorateApartments(b, w, h, d) {
   for (let f = 1; f < floors; f++) {
     const y = base + f * 2.4;
     for (const [sx, sz, bw, bd] of [[0, 1, w * 0.8, 0.5], [0, -1, w * 0.8, 0.5], [1, 0, 0.5, d * 0.8], [-1, 0, 0.5, d * 0.8]]) {
-      const col = propMat(PROP_COLORS[(f + sx + sz * 2 + 10) % PROP_COLORS.length]);
+      const col = propMat(WARM[(f + sx + sz * 2 + 10) % WARM.length]);
       piece(boxGeo, whiteMat, x + (sx * (w + 0.5)) / 2, y, z + (sz * (d + 0.5)) / 2, bw, 0.12, bd, false);
       piece(boxGeo, col, x + (sx * (w + 0.95)) / 2, y + 0.12, z + (sz * (d + 0.95)) / 2, sx ? 0.06 : bw, 0.6, sz ? 0.06 : bd, false);
     }
     if (f % 2 === 0) {
       // Washing line with a few bright clothes on the front balcony.
-      for (let k = -2; k <= 2; k++) piece(boxGeo, propMat(PROP_COLORS[(k + f + 7) % PROP_COLORS.length]), x + k * w * 0.15, y + 0.8, z + d / 2 + 0.3, 0.3, 0.4, 0.04, false);
+      for (let k = -2; k <= 2; k++) piece(boxGeo, propMat(WARM[(k + f + 7) % WARM.length]), x + k * w * 0.15, y + 0.8, z + d / 2 + 0.3, 0.3, 0.4, 0.04, false);
     }
   }
   piece(boxGeo, trimMaterial(b.material), x, top - 0.1, z, w + 0.2, 0.2, d + 0.2);
@@ -1362,7 +1366,7 @@ function decorateLibrary(b, w, h, d, fullH) {
 // plain box takes; the rest is tiers, crowns and spires.
 // ---------------------------------------------------------------------------
 const STYLE_SHAFT = { default: 1, deco: 0.62, chrysler: 0.7, stepped: 0.5, glass: 1, twin: 1, brick: 1, modern: 1, civic: 1, shop: 1 };
-const STYLE_TINT = { deco: 0xf0e3c6, chrysler: 0xd9d6cc, stepped: 0xd2743f, glass: 0x4f7a9a, twin: 0x8fb0c8, brick: 0xb0553c, modern: 0xf3efe6, civic: 0xe8dcc0, shop: 0xe39a5a };
+const STYLE_TINT = { deco: 0xeadfcb, chrysler: 0xd9cbb5, stepped: 0xc0694a, glass: 0xb7aea3, twin: 0xc9bfb3, brick: 0xa84a35, modern: 0xe6dccb, civic: 0xeadfcb, shop: 0xd4805f };
 function hashName(name) {
   let h = 2166136261;
   for (let i = 0; i < name.length; i++) h = Math.imul(h ^ name.charCodeAt(i), 16777619);
@@ -1524,12 +1528,12 @@ function decorateStyled(b, w, h, d, style) {
 // street level, corner quoins and floor ledges on masonry, fins on glass,
 // balconies on concrete. Front (+z) and right (+x) faces are the ones the
 // camera sees, so the detail goes there.
-const shopGlassMat = new THREE.MeshStandardMaterial({ color: 0x2c4a5e, roughness: 0.1, metalness: 0.7 });
+const shopGlassMat = new THREE.MeshStandardMaterial({ color: 0x3b3633, roughness: 0.1, metalness: 0.7 });
 const frameMat = new THREE.MeshStandardMaterial({ color: 0x2d3038, roughness: 0.6, metalness: 0.3 });
 const railMat = new THREE.MeshStandardMaterial({ color: 0xbfe3f0, roughness: 0.1, metalness: 0.5, transparent: true, opacity: 0.55 });
 const awningMats = awningStripesMats();
 function awningStripesMats() {
-  return [0xd94f4f, 0x2b6cb0, 0x35a06b, 0xf2b134, 0x7b4fd9].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 }));
+  return [0xb9583c, 0x7a4a3a, 0xeadfcb, 0x9a3f2e, 0x5f5a54].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 }));
 }
 function facadeDetail(b, w, d, style) {
   const x = b.position.x;
@@ -1675,6 +1679,8 @@ function decorate(b, w, h, d) {
 // no block is a blank slab (parking, cafés, kiosks, gardens, playgrounds…).
 // ---------------------------------------------------------------------------
 const CELL = 3.0;
+// Warm palette from the reference city, for building trim and balconies.
+const WARM = [0xb9583c, 0xeadfcb, 0xd8b28a, 0xa84a35, 0xd4805f, 0x8f6f5e];
 const PROP_COLORS = [0xff6b6b, 0xffd166, 0x4cc9f0, 0x4361ee, 0x90be6d, 0xff9f1c];
 const propMats = {};
 function propMat(hex) {
