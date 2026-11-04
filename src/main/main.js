@@ -10,6 +10,17 @@ const config = require('./config');
 const cityhall = require('./cityhall');
 const { createProtection, friendlyError } = require('./protect');
 const protection = createProtection();
+const { createDrives, driveMessage } = require('./drives');
+let drives = createDrives(); // reloaded with the saved opt-ins once userData is known
+const driveBlock = (p) => {
+  const c = drives.blocked(p);
+  return c ? { ok: false, error: 'drive', drive: c, message: driveMessage(c) } : null;
+};
+// Scanning never walks into cloud folders or other drives that aren't opted in.
+const scanSkip = (p) => {
+  const c = drives.blocked(p);
+  return c ? { kind: c.kind, label: c.label } : null;
+};
 
 let win;
 let currentScan = null;
@@ -49,6 +60,7 @@ app.on('second-instance', () => {
 if (WIN) app.setAppUserModelId('com.sommarfilms.storagesaver');
 
 app.whenReady().then(() => {
+  drives = createDrives({ file: path.join(app.getPath('userData'), 'drives.json') });
   plan = createLicence({ dir: app.getPath('userData'), forcePro: !app.isPackaged && process.env.GIGAPOLIS_PRO === '1' });
   plan.revalidate().then(pushPlan);
   setInterval(() => plan.revalidate().then(pushPlan), 6 * 3600000);
@@ -100,8 +112,14 @@ ipcMain.handle('scan:start', async (event, root) => {
   currentScan = controller;
   const target = root || defaultRoots()[0];
   const sender = event.sender;
+  const block = driveBlock(target);
+  if (block) {
+    if (currentScan === controller) currentScan = null;
+    return { blocked: block };
+  }
   try {
     const tree = await scan(target, {
+      skip: scanSkip,
       signal: controller.signal,
       onProgress: (p) => {
         if (!sender.isDestroyed()) sender.send('scan:progress', p);
@@ -147,6 +165,11 @@ ipcMain.handle('fs:reveal', (_e, p) => {
   return true;
 });
 
+// Cloud folders and other drives: off by default, opted in one by one.
+ipcMain.handle('drives:list', () => drives.available());
+ipcMain.handle('drives:add', (_e, root) => drives.add(root));
+ipcMain.handle('drives:remove', (_e, root) => drives.remove(root));
+
 ipcMain.handle('fs:pickFolder', async () => {
   const res = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
   return res.canceled ? null : res.filePaths[0];
@@ -168,6 +191,8 @@ ipcMain.handle('fs:trash', async (_e, paths) => {
   // Never trash a top-level user or system folder (e.g. ~/Pictures, /Applications).
   const guarded = paths.map((p) => [p, protection.check(p)]).filter(([, r]) => r);
   if (guarded.length) return guarded.map(([p, r]) => ({ path: p, ok: false, error: 'protected', name: r.name, contents: r.contents }));
+  const offDrive = paths.map((p) => [p, driveBlock(p)]).find(([, b]) => b);
+  if (offDrive) return paths.map((p) => ({ path: p, ...offDrive[1] }));
   const sizes = await measure(paths);
   const blocked = plan.checkAllowance(sum(sizes, paths));
   if (blocked) return paths.map((p) => ({ path: p, ...blocked }));
@@ -195,6 +220,11 @@ async function trashPaths(paths) {
         results.push({ path: p, ok: false, error: 'protected' });
         continue;
       }
+      const block = driveBlock(p);
+      if (block) {
+        results.push({ path: p, ...block });
+        continue;
+      }
       if (!fs.existsSync(p)) {
         results.push({ path: p, ok: false, error: 'missing' });
         continue;
@@ -212,6 +242,8 @@ async function trashPaths(paths) {
 ipcMain.handle('fs:emptyFolder', async (_e, dir) => {
   const guard = protection.check(dir);
   if (guard && !guard.contents) return [{ path: dir, ok: false, error: 'protected', name: guard.name, contents: false }];
+  const block = driveBlock(dir);
+  if (block) return [{ path: dir, ...block }];
   let entries;
   try {
     entries = await fsp.readdir(dir);
@@ -227,6 +259,7 @@ ipcMain.handle('fs:emptyFolder', async (_e, dir) => {
   const results = [];
   for (const p of paths) {
     try {
+      if (driveBlock(p)) throw new Error('Cloud or other drive not added');
       await shell.trashItem(p);
       results.push({ path: p, ok: true });
     } catch (err) {
@@ -291,7 +324,7 @@ async function weeklyCheckup() {
   if (Date.now() - (st.weekly.lastRun || 0) < config.weeklyMs) return;
   plan.setWeekly({ lastRun: Date.now() });
   try {
-    const tree = await scan(defaultRoots()[0], {});
+    const tree = await scan(defaultRoots()[0], { skip: scanSkip });
     lastTree = tree;
     const sweep = sweepOnly(suggestions(tree));
     const deep = await deepSuggestions(tree);

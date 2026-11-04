@@ -45,6 +45,9 @@
         <button id="btn-pick" class="ghost" title="Scan a different folder">
           <svg viewBox="0 0 16 16" width="15" height="15"><path d="M1.5 4a1 1 0 011-1h3.2l1.6 1.6H13.5a1 1 0 011 1V12a1 1 0 01-1 1h-11a1 1 0 01-1-1z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
         </button>
+        <button id="btn-drives" class="ghost" title="Cloud and other drives">
+          <svg viewBox="0 0 16 16" width="15" height="15"><rect x="1.5" y="9" width="13" height="5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4.5 6.5a3.5 3.5 0 016.6-1.6A2.3 2.3 0 0111.5 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="11.5" r="0.9" fill="currentColor"/></svg>
+        </button>
       </div>
       <div id="progress" hidden>
         <div class="bar"><div id="progress-bar"></div></div>
@@ -104,6 +107,14 @@
         <button id="btn-perm-skip" class="link">Scan without it</button>
       </div>
       <p class="hint" id="perm-wait">Waiting for the switch to be turned on…</p>
+    </div>
+  </div>
+  <div id="drives" class="overlay" hidden>
+    <div class="card">
+      <h2>Cloud and other drives</h2>
+      <p>Gigapolis only scans and cleans this computer's own disk. Cloud folders and other drives are left out, because deleting from a synced cloud drive also deletes it <b>online and on your other devices</b>.</p>
+      <ul id="drive-list"></ul>
+      <div class="perm-actions"><button id="btn-drives-close" class="link">Done</button></div>
     </div>
   </div>
   <div id="tooltip" hidden></div>
