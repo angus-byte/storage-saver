@@ -222,7 +222,7 @@ function suggestions(tree, now = Date.now()) {
   // Highest-level cache folders only (don't list every nested cache dir).
   collect(tree, (n) => {
     if (n.isDir && n.kind === 'cache' && n.size > 50 * 1024 * 1024) {
-      if (!seenCachePaths.some((p) => n.path.startsWith(p + path.sep))) {
+      if (!seenCachePaths.some((p) => n.path.startsWith(p + '/') || n.path.startsWith(p + '\\'))) {
         seenCachePaths.push(n.path);
         topCache.push(n);
       }
