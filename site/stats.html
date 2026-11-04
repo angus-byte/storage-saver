@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Gigapolis stats</title>
+<link rel="icon" href="img/icon.png">
+<style>
+:root{--cream:#f6efe3;--rust:#b9583c;--sand:#d8b28a;--ink:#2b1d16;--muted:#6e5a4c;--card:#fffaf2;--line:rgba(43,29,22,.12);--teal:#2f8f8a}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--cream);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 60px}
+header{display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;margin-bottom:18px}
+h1{font-size:22px;margin:0;display:flex;align-items:center;gap:10px}
+h1 img{width:30px;height:30px;border-radius:8px}
+h2{font-size:15px;margin:0 0 10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.muted{color:var(--muted);font-size:13px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.tile,.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.tile b{display:block;font-size:28px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.tile span{color:var(--muted);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+td,th{padding:5px 0;border-bottom:1px solid var(--line);text-align:right}
+td:first-child,th:first-child{text-align:left}
+th{font-size:12px;color:var(--muted);font-weight:600}
+.chart{display:flex;align-items:flex-end;gap:2px;height:120px;margin-top:6px}
+.chart div{flex:1;display:flex;flex-direction:column-reverse;gap:1px;height:100%}
+.chart i{display:block;background:var(--sand);border-radius:2px 2px 0 0;min-height:0}
+.chart i.d{background:var(--rust)}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.banner{background:#fde8c8;border:1px solid #e9b877;border-radius:10px;padding:8px 12px;font-size:13px;margin-bottom:12px}
+form{display:flex;gap:8px;flex-wrap:wrap;margin:40px 0}
+input{flex:1;min-width:200px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);font:inherit;background:#fff}
+button{padding:10px 16px;border-radius:10px;border:0;background:var(--rust);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);padding:6px 12px}
+.err{color:#a3341b}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><img src="img/icon.png" alt="">Gigapolis stats</h1>
+    <div><span class="muted" id="gen"></span> <button class="ghost" id="reload" hidden>Refresh</button></div>
+  </header>
+  <form id="login" hidden>
+    <input id="key" type="password" placeholder="Stats key (STATS_KEY in Cloudflare)" autocomplete="current-password">
+    <button>Open</button>
+    <p class="err" id="err" style="width:100%;margin:0"></p>
+  </form>
+  <div id="out"></div>
+</div>
+<script>
+var $ = function (id) { return document.getElementById(id); };
+var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+var num = function (n) { return (n || 0).toLocaleString(); };
+var usd = function (c) { return '$' + ((c || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+var PL = { 'mac-arm': 'Mac (Apple Silicon)', 'mac-intel': 'Mac (Intel)', win: 'Windows', releases: 'Releases page' };
+
+// Key: from #k=… (bookmarkable, never sent to the server as part of the URL) or saved in this browser.
+var key = '';
+var m = location.hash.match(/k=([^&]+)/);
+if (m) { key = decodeURIComponent(m[1]); history.replaceState(null, '', location.pathname); }
+try { key = key || localStorage.getItem('gp_stats_key') || ''; } catch (e) {}
+
+function load() {
+  if (!key) { $('login').hidden = false; return; }
+  $('gen').textContent = 'Loading…';
+  fetch('/api/stats', { headers: { Authorization: 'Bearer ' + key } })
+    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (x) {
+      if (!x.ok) throw new Error(x.j.error || 'Failed');
+      try { localStorage.setItem('gp_stats_key', key); } catch (e) {}
+      $('login').hidden = true; $('reload').hidden = false;
+      render(x.j);
+    })
+    .catch(function (e) { $('gen').textContent = ''; $('login').hidden = false; $('err').textContent = e.message; });
+}
+
+function table(head, rows) {
+  if (!rows.length) return '<p class="muted">Nothing yet.</p>';
+  return '<table><tr>' + head.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr>' +
+    rows.map(function (r) { return '<tr>' + r.map(function (c) { return '<td>' + c + '</td>'; }).join('') + '</tr>'; }).join('') + '</table>';
+}
+
+function render(d) {
+  $('gen').textContent = 'Updated ' + new Date(d.generated).toLocaleString();
+  var s = d.site || {}, g = d.downloads || {}, sa = d.sales || {};
+  var rows = s.rows || [];
+  var visits = 0, clicks = 0, days = {}, src = {}, plat = {}, ctry = {};
+  for (var i = 0; i < d.days; i++) {
+    var k = new Date(Date.parse(d.generated) - (d.days - 1 - i) * 864e5).toISOString().slice(0, 10);
+    days[k] = { v: 0, d: 0 };
+  }
+  rows.forEach(function (r) {
+    var isV = r.kind === 'visit';
+    if (isV) visits += r.n; else clicks += r.n;
+    if (days[r.day]) days[r.day][isV ? 'v' : 'd'] += r.n;
+    (src[r.source] = src[r.source] || { v: 0, d: 0 })[isV ? 'v' : 'd'] += r.n;
+    (ctry[r.country] = ctry[r.country] || { v: 0, d: 0 })[isV ? 'v' : 'd'] += r.n;
+    if (!isV) plat[r.platform] = (plat[r.platform] || 0) + r.n;
+  });
+  var max = 1;
+  Object.keys(days).forEach(function (k) { max = Math.max(max, days[k].v + days[k].d); });
+  var bars = Object.keys(days).map(function (k) {
+    var x = days[k];
+    return '<div title="' + k + ': ' + x.v + ' visits, ' + x.d + ' download clicks"><i style="height:' + (x.v / max * 100) + '%"></i><i class="d" style="height:' + (x.d / max * 100) + '%"></i></div>';
+  }).join('');
+  var sorted = function (o) { return Object.keys(o).sort(function (a, b) { return (o[b].v + o[b].d) - (o[a].v + o[a].d); }); };
+  var pct = function (a, b) { return b ? Math.round(a / b * 100) + '%' : '–'; };
+  var l30 = sa.last30 || {}, all = sa.allTime || {};
+
+  var h = '';
+  if (sa.testMode) h += '<div class="banner">Sales are from Lemon Squeezy <b>test mode</b> (test API key). Swap in a live key after store approval.</div>';
+  if (s.enabled === false) h += '<div class="banner">Visit counting is off: bind a D1 database as <b>STATS_DB</b> in Cloudflare Pages.</div>';
+  if (s.error) h += '<div class="banner">Site stats error: ' + esc(s.error) + '</div>';
+  h += '<div class="tiles">' +
+    '<div class="tile"><b>' + num(visits) + '</b><span>Visits, last 30 days</span></div>' +
+    '<div class="tile"><b>' + num(clicks) + '</b><span>Download clicks, 30 days (' + pct(clicks, visits) + ')</span></div>' +
+    '<div class="tile"><b>' + (g.error ? '–' : num(g.total)) + '</b><span>App downloads, all time (GitHub)</span></div>' +
+    '<div class="tile"><b>' + (sa.enabled ? num(l30.orders) : '–') + '</b><span>Pro sales, 30 days · ' + num(all.orders) + ' all time</span></div>' +
+    '<div class="tile"><b>' + (sa.enabled ? usd(l30.net) : '–') + '</b><span>Net of refunds, 30 days · ' + usd(all.net) + ' all time</span></div>' +
+    '<div class="tile"><b>' + (sa.enabled ? num(l30.refunds) : '–') + '</b><span>Refunds, 30 days · ' + num(all.refunds) + ' all time</span></div>' +
+    '</div>';
+  h += '<div class="card" style="margin-bottom:12px"><h2>Last 30 days</h2><div class="chart">' + bars + '</div>' +
+    '<div class="legend"><span><i style="background:var(--sand)"></i>Visits</span><span><i style="background:var(--rust)"></i>Download clicks</span></div></div>';
+  h += '<div class="grid">';
+  h += '<div class="card"><h2>Where visitors come from</h2>' + table(['Source', 'Visits', 'Downloads', 'Rate'],
+    sorted(src).slice(0, 15).map(function (k) { return [esc(k), num(src[k].v), num(src[k].d), pct(src[k].d, src[k].v)]; })) +
+    '<p class="muted">Tag your links with <code>?ref=name</code>, e.g. getgigapolis.com/?ref=macupdate</p></div>';
+  var gp = g.byPlatform || {};
+  h += '<div class="card"><h2>Downloads by platform</h2>' + table(['Platform', 'Clicks (30d)', 'GitHub (all)'],
+    ['mac-arm', 'mac-intel', 'win', 'releases'].map(function (k) { return [PL[k], num(plat[k]), k === 'releases' ? '' : num(gp[k])]; })) +
+    (g.error ? '<p class="err">' + esc(g.error) + '</p>' : '') +
+    '<p class="muted">GitHub counts include downloads from other sites. Mac in-app updates are not counted; Windows ones are.</p></div>';
+  h += '<div class="card"><h2>Countries</h2>' + table(['Country', 'Visits', 'Downloads'],
+    sorted(ctry).slice(0, 12).map(function (k) { return [esc(k), num(ctry[k].v), num(ctry[k].d)]; })) + '</div>';
+  h += '<div class="card"><h2>Releases</h2>' + table(['Version', 'Apple Si', 'Intel', 'Win'],
+    (g.releases || []).map(function (r) { return [esc(r.tag) + ' <span class="muted">' + esc(r.date) + '</span>', num(r['mac-arm']), num(r['mac-intel']), num(r.win)]; })) + '</div>';
+  h += '</div>';
+  if (sa.error) h += '<p class="err">Sales: ' + esc(sa.error) + '</p>';
+  if (sa.enabled === false) h += '<p class="muted">Sales: add LEMONSQUEEZY_API_KEY in Cloudflare to see sales.</p>';
+  h += '<p class="muted">Visits are counted once per browser tab, with bots and automated browsers filtered out. Gross sales are before Lemon Squeezy fees and tax.</p>';
+  $('out').innerHTML = h;
+}
+
+$('login').addEventListener('submit', function (e) { e.preventDefault(); key = $('key').value.trim(); $('err').textContent = ''; load(); });
+$('reload').addEventListener('click', load);
+load();
+</script>
+</body>
+</html>

@@ -233,6 +233,36 @@ fetch('https://api.github.com/repos/angus-byte/storage-saver/releases/latest')
     if (rel.tag_name) document.getElementById('dl-ver').textContent = 'Free · ' + rel.tag_name;
   })
   .catch(function () {});
+// Privacy-friendly stats: no cookies, no IDs. Sends only "a visit / a download click", the platform,
+// and where the visitor came from (?ref=, utm_source or the referring site's name). See privacy.html.
+(function () {
+  if (navigator.webdriver || !navigator.sendBeacon) return;
+  var send = function (k, p, s) {
+    try { navigator.sendBeacon('/api/track', new Blob([JSON.stringify({ k: k, p: p, s: s })], { type: 'text/plain' })); } catch (e) {}
+  };
+  var src = null;
+  try { src = sessionStorage.getItem('gp_src'); } catch (e) {}
+  if (!src) {
+    var q = new URLSearchParams(location.search);
+    src = q.get('ref') || q.get('utm_source') || '';
+    if (!src && document.referrer) {
+      try { var h = new URL(document.referrer).hostname; if (h !== location.hostname) src = h; } catch (e) {}
+    }
+    src = src || 'direct';
+    try { sessionStorage.setItem('gp_src', src); } catch (e) {}
+    send('visit', '', src); // once per browser tab
+  }
+  var platform = function (href) {
+    if (/-arm64\.dmg$/i.test(href)) return 'mac-arm';
+    if (/-x64\.dmg$/i.test(href)) return 'mac-intel';
+    if (/\.exe$/i.test(href)) return 'win';
+    return 'releases';
+  };
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('[data-dl], #dl-alt, #dl-win');
+    if (a && a.getAttribute('href') !== '#download') send('download', platform(a.href), src);
+  });
+})();
 </script>
 </body>
 </html>
