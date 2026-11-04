@@ -10,7 +10,7 @@ import { categorize, CATEGORIES } from './categories.js';
 import { mockTree, mockSuggestions, mockDisk } from './mock.js';
 import { initPro, demoPlanApi, mockDeep } from './pro.js';
 import { initSeasons } from './seasons.js';
-import { localizeDom } from './platform.js';
+import { localizeDom, IS_WIN } from './platform.js';
 import { initDrives } from './drives.js';
 
 localizeDom();
@@ -103,6 +103,7 @@ const MAX_H = 85;
 // State
 // ---------------------------------------------------------------------------
 // city: one node per main category (see categories.js); open: the category whose files show in the panel.
+const SYS_OTHER = 'sysother'; // the "System & other users" building
 const state = { disk: null, tree: null, city: [], open: null, suggestions: null, deep: null, selected: new Map(), scanning: false };
 let pro = null; // free / Pro plan UI, see pro.js
 let seasons = null; // Pro autumn / winter, see seasons.js
@@ -631,7 +632,7 @@ function layout() {
     if (total > 0) {
       const otherUsed = Math.max(0, total - free - node.size);
       if (free > 0) items.push({ name: 'Free space', size: free, kind: 'free', isDir: false, virtual: true });
-      if (otherUsed > node.size * 0.02) items.push({ name: 'System & other users', size: otherUsed, kind: 'system', isDir: false, virtual: true, files: 0 });
+      if (otherUsed > node.size * 0.02) items.push({ name: 'System & other users', size: otherUsed, kind: 'system', isDir: false, virtual: true, files: 0, category: SYS_OTHER });
     }
   }
   items.sort((a, b) => b.size - a.size);
@@ -2894,7 +2895,7 @@ function updateHover() {
         hovered.material.color.offsetHSL(0, 0, 0.14);
       }
       const it = hovered.userData.item;
-      tooltip.innerHTML = `<b>${esc(it.name)}</b>${fmt(it.size)} · ${KIND_LABELS[it.kind] || it.kind}${it.files ? ` · ${it.files.toLocaleString()} files` : ''}${it.category ? ' · click to see files' : ''}<div class="path">${esc(it.path || '')}</div>`;
+      tooltip.innerHTML = `<b>${esc(it.name)}</b>${fmt(it.size)} · ${KIND_LABELS[it.kind] || it.kind}${it.files ? ` · ${it.files.toLocaleString()} files` : ''}${it.category === SYS_OTHER ? ' · click to see what this is' : it.category ? ' · click to see files' : ''}<div class="path">${esc(it.path || '')}</div>`;
       tooltip.hidden = false;
       renderer.domElement.style.cursor = it.category ? 'pointer' : 'default';
     } else {
@@ -3181,10 +3182,44 @@ function openCategory(id) {
   setPanel(true);
   showTab('files');
 }
+// "System & other users": disk space outside the scanned folder. Gigapolis
+// can't see inside it, so the Files tab explains it and points at what is safe.
+const SYS_PARTS = IS_WIN
+  ? [
+      ['🪟', 'Windows itself', 'The operating system. Can’t be removed.'],
+      ['📦', 'Program Files', 'Installed apps. Remove them in App Uninstaller.'],
+      ['💤', 'Page file and hibernation file', 'Windows manages these. Size depends on your memory.'],
+      ['⏪', 'System Restore points', 'Windows Disk Cleanup can remove older ones.'],
+      ['👥', 'Other users on this PC', 'Their files are private to them.'],
+    ]
+  : [
+      ['🍎', 'macOS itself', 'The operating system. Sealed and read-only.'],
+      ['📦', 'Apps in Applications', 'Remove them in App Uninstaller.'],
+      ['🕰', 'Time Machine local snapshots', 'Often the biggest part of “System Data”. Safe to clear.'],
+      ['💤', 'Swap and sleep files', 'macOS manages these. They shrink after a restart.'],
+      ['👥', 'Other users on this Mac', 'Their files are private to them.'],
+    ];
+function renderSysOther(wrap) {
+  const total = state.disk && state.disk.roots[0] ? Math.max(0, state.disk.roots[0].total - state.disk.roots[0].free - (state.tree ? state.tree.size : 0)) : 0;
+  $('files-head').innerHTML = `<button class="link" id="files-back">‹ All</button><span class="cat-title"><span class="dot" style="background:${hexColor('system')}"></span>System &amp; other users</span><span class="muted">${fmt(total)}</span>`;
+  $('files-back').onclick = () => openCategory(null);
+  wrap.innerHTML = `<p class="hint" style="margin:0 2px 8px">Space used on your disk outside your home folder. It isn’t files you made, and deleting things here by hand can break your ${IS_WIN ? 'PC' : 'Mac'}, so there is nothing to Demolish. What it usually holds:</p>
+    <ul class="file-list sys-parts">${SYS_PARTS.map(([i, n, d]) => `<li class="row"><span class="icon">${i}</span><span class="name">${esc(n)}<small>${esc(d)}</small></span></li>`).join('')}</ul>
+    <div class="row-actions" style="padding-left:0">
+      <button data-act="snap">${IS_WIN ? '🧽 Open Disk Cleanup' : '🕰 Clear Time Machine snapshots'}</button>
+      <button data-act="safe">🧹 Safe Clean caches</button>
+      <button data-act="apps">📦 App Uninstaller</button>
+    </div>`;
+  wrap.querySelector('[data-act="snap"]').onclick = () => maint && maint.open && maint.open([IS_WIN ? 'cleanup' : 'snapshots']);
+  wrap.querySelector('[data-act="safe"]').onclick = () => showTab('safe');
+  wrap.querySelector('[data-act="apps"]').onclick = () => (cityHall && cityHall.open ? cityHall.open() : showTab('hall'));
+}
+
 function renderFiles() {
   const wrap = $('files');
   if (!wrap) return;
   wrap.innerHTML = '';
+  if (state.open === SYS_OTHER) return renderSysOther(wrap);
   const cat = state.open && state.city.find((c) => c.category === state.open);
   if (!cat) {
     state.open = null;
@@ -3550,7 +3585,7 @@ api.diskInfo().then((d) => {
   state.disk = d;
   renderDisk();
 });
-initCityHall({ api, fmt, esc, toast, pro, DEMO });
+const cityHall = initCityHall({ api, fmt, esc, toast, pro, DEMO });
 initPhotos({ api, fmt, esc, toast, pro, DEMO });
 initPrivacy({ api, fmt, esc, toast, pro, DEMO });
 const perf = initPerformance({ api, fmt, esc, toast, DEMO });

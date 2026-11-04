@@ -100,6 +100,18 @@ function macTasks({ uid = process.getuid ? process.getuid() : 501, exists = fs.e
       ok: 'Home folder permissions repaired.',
     },
     {
+      id: 'snapshots',
+      icon: '🕰',
+      name: 'Clear Time Machine snapshots',
+      city: 'Clear the archive basement',
+      desc: 'Removes the local snapshots Time Machine keeps on this Mac. Often frees many GB of “System Data”. Backups on your backup drive are not touched.',
+      admin: true,
+      available: exists('/usr/bin/tmutil'),
+      sh: '/usr/bin/tmutil thinlocalsnapshots / 999999999999 4',
+      timeout: 10 * MIN,
+      ok: 'Local Time Machine snapshots cleared. The space shows as free within a minute or two.',
+    },
+    {
       id: 'spotlight',
       icon: '📚',
       name: 'Rebuild the Spotlight index',

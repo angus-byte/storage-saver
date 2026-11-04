@@ -49,6 +49,7 @@ function createMockMaintenance(win) {
     ['ram', '🧹', 'Free up memory', 'Clear the roads', 'Empties cached files out of memory. Handy before opening a big project.', null, true, true, false, 'Memory cache cleared.'],
     ['firstaid', '🩺', 'Check the disk (First Aid)', 'Building inspection', 'Checks your startup disk for errors. Your Mac may pause for a moment while it runs.', null, false, false, false, 'Your startup disk looks healthy.'],
     ['perms', '🔑', 'Repair home folder permissions', 'Re-key the front doors', 'Fixes “you don’t have permission” errors on your own files and folders.', null, true, false, false, 'Home folder permissions repaired.'],
+    ['snapshots', '🕰', 'Clear Time Machine snapshots', 'Clear the archive basement', 'Removes the local snapshots Time Machine keeps on this Mac. Often frees many GB of “System Data”. Backups on your backup drive are not touched.', null, true, false, false, 'Local Time Machine snapshots cleared. The space shows as free within a minute or two.'],
     ['spotlight', '📚', 'Rebuild the Spotlight index', 'Re-catalogue the library', 'Fixes search that misses files or shows ones you deleted.', 'Search results stay incomplete while it rebuilds, which can take an hour.', true, false, false, 'Spotlight is re-indexing in the background. Searches fill back in over the next hour.'],
   ];
   const pc = [
@@ -175,9 +176,11 @@ export function initMaintenance({ api, esc, toast, DEMO }) {
     else toast(r.ok ? `All done. ${n} job${n === 1 ? '' : 's'} finished.${DEMO ? ' (demo)' : ''}` : `${n} of ${r.results.length} jobs finished. See the notes below each one.`);
   };
 
+  let only = null; // ids to tick when opened from elsewhere (e.g. the System building)
   async function load() {
     try {
       data = await svc.list();
+      if (only) for (const t of data.tasks) if (only.includes(t.id)) picked.add(t.id);
       if (!picked.size) for (const t of data.tasks) if (t.recommended) picked.add(t.id);
     } catch {
       data = { tasks: [], lastRun: {} };
@@ -190,5 +193,17 @@ export function initMaintenance({ api, esc, toast, DEMO }) {
     if (!page.hidden && !loaded) (loaded = true), load();
   }).observe(page, { attributes: true, attributeFilter: ['hidden'] });
 
-  return { open: () => tabBtn.click(), reload: load };
+  // open(['snapshots']): show the tab with just those jobs ticked.
+  function open(ids) {
+    if (ids && !running) {
+      only = ids;
+      picked.clear();
+      if (data) {
+        for (const t of data.tasks) if (ids.includes(t.id)) picked.add(t.id);
+        render();
+      }
+    }
+    tabBtn.click();
+  }
+  return { open, reload: load };
 }
