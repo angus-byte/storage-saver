@@ -1,6 +1,7 @@
 // City Hall tab: Moving Day (uninstall apps with all their files) and Rush
 // Hour (things that start with the Mac, with Neighbourhood Watch flags).
 // Limits are enforced in the main process (src/main/main.js); this only shows them.
+import { IS_WIN } from './platform.js';
 
 const CITYHALL_CSS = `
 #tab-hall .chips { display: flex; gap: 6px; margin: 0 0 8px; }
@@ -127,7 +128,7 @@ export function initCityHall({ api, fmt, esc, toast, pro, DEMO }) {
     <div class="section-head hall-gap"><span>🚦 Rush Hour</span><span class="muted" id="hall-start-total"></span></div>
     <p class="hint" style="margin-top:0;margin-bottom:8px">Commuters that start every time your Mac does. <b>Neighbourhood Watch</b> flags ones that look wrong.</p>
     <div id="hall-start"></div>
-    <button class="ghost wide" id="hall-login">Open at Login apps (System Settings)</button>
+    <button class="ghost wide" id="hall-login">${IS_WIN ? 'Open Startup apps (Windows Settings)' : 'Open at Login apps (System Settings)'}</button>
     <p class="hint">Everything goes to the Trash, so you can put it back. Neighbourhood Watch is a quick check, not an antivirus.</p>`;
   body.appendChild(page);
 
@@ -153,7 +154,7 @@ export function initCityHall({ api, fmt, esc, toast, pro, DEMO }) {
       return;
     }
     if (!apps.supported) {
-      el.innerHTML = '<div class="empty">Moving Day is for macOS.</div>';
+      el.innerHTML = IS_WIN ? '<div class="empty">Moving Day is Mac-only for now. On Windows, remove apps in Settings › Apps › Installed apps.</div>' : '<div class="empty">Moving Day is for macOS.</div>';
       return;
     }
     const list = apps.apps.filter((a) => filter === 'all' || a.unused);
@@ -195,7 +196,7 @@ export function initCityHall({ api, fmt, esc, toast, pro, DEMO }) {
       return;
     }
     if (!startup.supported) {
-      el.innerHTML = '<div class="empty">Rush Hour is for macOS.</div>';
+      el.innerHTML = IS_WIN ? '<div class="empty">Rush Hour is Mac-only for now. On Windows, use the Startup apps button below.</div>' : '<div class="empty">Rush Hour is for macOS.</div>';
       return;
     }
     const flagged = startup.items.filter((i) => i.flags.some((f) => WATCH[f] && WATCH[f][2])).length;

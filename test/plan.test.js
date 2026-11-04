@@ -181,3 +181,28 @@ test('owner key accepts sloppy typing and smart dashes', async () => {
     assert.ok((await lic.activate(typed)).ok, typed);
   }
 });
+
+test('Deep Clean on Windows: iPhone backups, crash dumps, Outlook, dev caches', async () => {
+  const home = tmp();
+  const put = (rel, size) => {
+    const p = path.join(home, ...rel.split('/'));
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, '');
+    fs.truncateSync(p, size);
+  };
+  const MB = 1024 ** 2;
+  put('AppData/Roaming/Apple Computer/MobileSync/Backup/0001/data', 30 * MB);
+  fs.writeFileSync(path.join(home, 'AppData/Roaming/Apple Computer/MobileSync/Backup/0001/Info.plist'),
+    '<?xml version="1.0"?><plist><dict><key>Device Name</key><string>Angus&amp;s iPhone</string><key>Last Backup Date</key><date>2024-01-02T03:04:05Z</date></dict></plist>');
+  put('AppData/Local/CrashDumps/app.dmp', 12 * MB);
+  put('AppData/Local/Microsoft/Windows/INetCache/Content.Outlook/AB12/report.pdf', 6 * MB);
+  put('AppData/Local/npm-cache/_cacache/blob', 25 * MB);
+  const tree = await scan(home, {});
+  const deep = await deepSuggestions(tree, { home, platform: 'win32' });
+  assert.strictEqual(deep.iosBackups.items[0].name, 'Angus&s iPhone backup');
+  assert.deepStrictEqual(deep.logsInstallers.items.map((i) => i.name), ['Crash dumps']);
+  assert.deepStrictEqual(deep.mailAttachments.items.map((i) => i.name), ['Outlook attachments']);
+  assert.deepStrictEqual(deep.devJunk.items.map((i) => i.name), ['npm cache']);
+  assert.strictEqual(deep.appLeftovers.items.length, 0);
+  assert.ok(isDeepPath(path.join(home, 'AppData/Local/CrashDumps/app.dmp')));
+});

@@ -23,7 +23,8 @@ app = app
   .replace("import { categorize, CATEGORIES } from './categories.js';\n", '')
   .replace("import { mockTree, mockSuggestions, mockDisk } from './mock.js';\n", '')
   .replace("import { initPro, demoPlanApi, mockDeep } from './pro.js';\n", '')
-  .replace("import { initSeasons } from './seasons.js';\n", '');
+  .replace("import { initSeasons } from './seasons.js';\n", '')
+  .replace("import { localizeDom } from './platform.js';\n", '');
 
 html = html
   .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\n/, '')
@@ -36,7 +37,8 @@ html = html
 
 fs.mkdirSync(path.join(root, 'demo'), { recursive: true });
 // City Hall tab (apps + startup items): inlined ahead of the app code.
-const cityhall = r('cityhall.js').replace(/^export /gm, '');
-html = html.replace("import { initCityHall } from './cityhall.js';\n", '').replace('<script type="module">\n', () => `<script type="module">\n${cityhall}\n`);
+const cityhall = r('cityhall.js').replace(/^export /gm, '').replace("import { IS_WIN } from './platform.js';\n", '');
+const platformJs = r('platform.js').replace(/^export /gm, '');
+html = html.replace("import { initCityHall } from './cityhall.js';\n", '').replace('<script type="module">\n', () => `<script type="module">\n${platformJs}\n${cityhall}\n`);
 fs.writeFileSync(path.join(root, 'demo', 'index.html'), html);
 console.log('demo/index.html written');

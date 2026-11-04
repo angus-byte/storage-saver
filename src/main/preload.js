@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('storage', {
+  platform: process.platform,
   diskInfo: () => ipcRenderer.invoke('disk:info'),
   scan: (root) => ipcRenderer.invoke('scan:start', root),
   cancelScan: () => ipcRenderer.invoke('scan:cancel'),

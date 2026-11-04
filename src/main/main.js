@@ -34,6 +34,20 @@ function createWindow() {
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 }
 
+const WIN = process.platform === 'win32';
+// One Gigapolis at a time: opening it again (e.g. while the weekly check-up
+// runs hidden) just shows the window.
+if (!app.requestSingleInstanceLock()) app.exit(0);
+app.on('second-instance', () => {
+  const w = BrowserWindow.getAllWindows()[0];
+  if (!w) return createWindow();
+  if (w.isMinimized()) w.restore();
+  w.show();
+  w.focus();
+});
+// Windows needs this for notifications to show the app's name and icon.
+if (WIN) app.setAppUserModelId('com.sommarfilms.storagesaver');
+
 app.whenReady().then(() => {
   plan = createLicence({ dir: app.getPath('userData'), forcePro: !app.isPackaged && process.env.GIGAPOLIS_PRO === '1' });
   plan.revalidate().then(pushPlan);
@@ -41,14 +55,14 @@ app.whenReady().then(() => {
   startWeeklyCheckup();
   startAutoUpdates();
   // Opened at login for the weekly check-up: stay in the background.
-  const hidden = process.platform === 'darwin' && app.getLoginItemSettings().wasOpenedAsHidden;
+  const hidden = WIN ? process.argv.includes('--hidden') : process.platform === 'darwin' && app.getLoginItemSettings().wasOpenedAsHidden;
   if (!hidden) createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-// Auto-update from GitHub Releases (latest-mac.yml). Downloads in the
+// Auto-update from GitHub Releases (latest-mac.yml / latest.yml on Windows). Downloads in the
 // background and installs on next quit, with a notification when ready.
 function startAutoUpdates() {
   if (!app.isPackaged) return;
@@ -204,8 +218,8 @@ ipcMain.handle('fs:emptyFolder', async (_e, dir) => {
   } catch (err) {
     return [{ path: dir, ok: false, ...friendlyError(err, dir) }];
   }
-  // Skip hidden system files (.localized, .DS_Store) and anything protected.
-  const paths = entries.filter((name) => name !== '.localized').map((name) => path.join(dir, name)).filter((p) => !protection.isProtected(p));
+  // Skip hidden system files (.localized, desktop.ini) and anything protected.
+  const paths = entries.filter((name) => name !== '.localized' && name.toLowerCase() !== 'desktop.ini').map((name) => path.join(dir, name)).filter((p) => !protection.isProtected(p));
   if (!paths.length) return [{ path: dir, ok: true }];
   const sizes = await measure(paths);
   const blocked = plan.checkAllowance(sum(sizes, paths));
@@ -265,9 +279,10 @@ ipcMain.handle('deep:scan', async () => {
 // rescan once a week and post a notification with what can be cleaned. It
 // never deletes on its own.
 function applyLoginItem() {
-  if (process.platform !== 'darwin' || !app.isPackaged) return;
+  if (!['darwin', 'win32'].includes(process.platform) || !app.isPackaged) return;
   const on = plan.isPro() && plan.status().weekly.enabled;
-  app.setLoginItemSettings({ openAtLogin: on, openAsHidden: true });
+  if (WIN) app.setLoginItemSettings({ openAtLogin: on, args: ['--hidden'] });
+  else app.setLoginItemSettings({ openAtLogin: on, openAsHidden: true });
 }
 
 async function weeklyCheckup() {
@@ -356,5 +371,6 @@ ipcMain.handle('startup:remove', async (_e, file) => {
 
 ipcMain.handle('startup:openSettings', () => {
   if (process.platform === 'darwin') shell.openExternal('x-apple.systempreferences:com.apple.LoginItems-Settings.extension');
+  else if (WIN) shell.openExternal('ms-settings:startupapps');
   return true;
 });

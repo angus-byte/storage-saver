@@ -13,7 +13,7 @@ const MB = 1024 ** 2;
 
 // Folder names editing apps rebuild on demand (Final Cut, Premiere, Resolve, Audition).
 const RENDER_DIRS = new Set(['render files', 'media cache files', 'media cache', 'cacheclip', 'peak files', 'analysis files']);
-const INSTALLER_EXT = /\.(dmg|pkg|iso|xip|mpkg)$/i;
+const INSTALLER_EXT = /\.(dmg|pkg|iso|xip|mpkg|msi)$/i;
 // Apple's own Application Support folders, never offered as leftovers.
 const SUPPORT_KEEP = /^(com\.apple|apple|addressbook|callhistory|clouddocs|crashreporter|dock|filefileprovider|fileprovider|icloud|knowledge|mobilesync|quick ?look|sync ?services|ubiquity|accounts|animoji|cloudkit|contextstore|default|familycircle|homekit|identityservices|siri|spotlight|text ?replacement|videoconference|networkserviceproxy|com\.microsoft\.autoupdate)/i;
 
@@ -25,7 +25,7 @@ const group = (items, limit = 100) => ({ items: items.slice(0, limit), total: to
 /** Paths that belong to Deep Clean, so Street Sweep leaves them alone. */
 function isDeepPath(p) {
   const s = lc(p) + '/';
-  if (s.includes('/node_modules/') || s.includes('/deriveddata/') || s.includes('/library/logs/') || s.includes('/library/developer/')) return true;
+  if (s.includes('/node_modules/') || s.includes('/deriveddata/') || s.includes('/library/logs/') || s.includes('/library/developer/') || s.includes('/appdata/local/crashdumps/') || s.includes('/content.outlook/')) return true;
   return s.split('/').some((seg) => RENDER_DIRS.has(seg));
 }
 
@@ -136,7 +136,18 @@ async function findDuplicates(tree, minSize = 50 * MB) {
   return out.sort((a, b) => b.size - a.size);
 }
 
+// Plain XML plist (what iTunes writes on Windows): <key>K</key><string|date>V</...>.
+function parseXmlPlist(xml) {
+  const out = {};
+  const re = /<key>([^<]*)<\/key>\s*<(string|date|integer)>([^<]*)<\/\2>/g;
+  let m;
+  while ((m = re.exec(xml))) if (!(m[1] in out)) out[m[1]] = m[3].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  return out;
+}
+
 function readPlistJson(file) {
+  if (process.platform !== 'darwin')
+    return fsp.readFile(file, 'utf8').then((x) => (x.includes('<plist') ? parseXmlPlist(x) : null), () => null);
   return new Promise((resolve) => {
     execFile('/usr/bin/plutil', ['-convert', 'json', '-o', '-', file], { timeout: 4000 }, (err, stdout) => {
       if (err) return resolve(null);
@@ -204,14 +215,21 @@ async function appLeftovers(home, now, listApps = installedApps) {
   return out.sort((a, b) => b.size - a.size);
 }
 
-async function iosBackups(home, now) {
-  const root = path.join(home, 'Library', 'Application Support', 'MobileSync', 'Backup');
-  let entries = [];
-  try {
-    entries = await fsp.readdir(root, { withFileTypes: true });
-  } catch {}
+// iPhone / iPad backups. Windows: iTunes from apple.com or the Microsoft Store / Apple Devices app.
+const BACKUP_ROOTS = {
+  darwin: ['Library/Application Support/MobileSync/Backup'],
+  win32: ['AppData/Roaming/Apple Computer/MobileSync/Backup', 'Apple/MobileSync/Backup'],
+};
+async function iosBackups(home, now, platform = process.platform) {
+  const list = [];
+  for (const rel of BACKUP_ROOTS[platform] || []) {
+    const root = path.join(home, ...rel.split('/'));
+    try {
+      for (const e of await fsp.readdir(root, { withFileTypes: true })) list.push([root, e]);
+    } catch {}
+  }
   const out = [];
-  for (const e of entries) {
+  for (const [root, e] of list) {
     if (!e.isDirectory()) continue;
     const p = path.join(root, e.name);
     const info = await readPlistJson(path.join(p, 'Info.plist'));
@@ -225,8 +243,15 @@ async function iosBackups(home, now) {
   return out.sort((a, b) => b.size - a.size);
 }
 
-async function devJunk(tree, home, now) {
-  const fixed = [
+const WIN_DEV = [
+  ['npm cache', 'AppData/Local/npm-cache/_cacache'],
+  ['Yarn cache', 'AppData/Local/Yarn/Cache'],
+  ['pip cache', 'AppData/Local/pip/Cache'],
+  ['NuGet cache', 'AppData/Local/NuGet/v3-cache'],
+  ['Gradle caches', '.gradle/caches'],
+];
+async function devJunk(tree, home, now, platform = process.platform) {
+  const fixed = platform === 'win32' ? WIN_DEV : [
     ['Xcode DerivedData', 'Library/Developer/Xcode/DerivedData'],
     ['Old iOS device support', 'Library/Developer/Xcode/iOS DeviceSupport'],
     ['Simulator caches', 'Library/Developer/CoreSimulator/Caches'],
@@ -239,7 +264,7 @@ async function devJunk(tree, home, now) {
   ];
   const out = [];
   for (const [name, rel] of fixed) {
-    const p = path.join(home, rel);
+    const p = path.join(home, ...rel.split('/'));
     const size = await sizeOf(p);
     if (size > 20 * MB) out.push({ name, path: p, size, kind: 'cache', mtime: await newestMtime(p), isDir: true, mode: 'empty', note: 'Rebuilt automatically' });
   }
@@ -255,11 +280,15 @@ async function devJunk(tree, home, now) {
   return out.sort((a, b) => b.size - a.size);
 }
 
-async function logsAndInstallers(tree, home, now) {
+async function logsAndInstallers(tree, home, now, platform = process.platform) {
   const out = [];
-  const logs = path.join(home, 'Library', 'Logs');
-  const size = await sizeOf(logs);
-  if (size > 10 * MB) out.push({ name: 'App logs', path: logs, size, kind: 'cache', mtime: await newestMtime(logs), isDir: true, mode: 'empty', note: 'Old diagnostic logs' });
+  const places = platform === 'win32'
+    ? [['Crash dumps', path.join(home, 'AppData', 'Local', 'CrashDumps'), 'Left behind when apps crashed']]
+    : [['App logs', path.join(home, 'Library', 'Logs'), 'Old diagnostic logs']];
+  for (const [name, logs, note] of places) {
+    const size = await sizeOf(logs);
+    if (size > 10 * MB) out.push({ name, path: logs, size, kind: 'cache', mtime: await newestMtime(logs), isDir: true, mode: 'empty', note });
+  }
   // Installers outside Downloads (Downloads is already in Street Sweep).
   const inst = collect(tree, (n) => !n.isDir && !n.aggregate && INSTALLER_EXT.test(n.name) && !lc(n.path).includes('/downloads/') && now - (n.mtime || 0) > 14 * DAY);
   for (const n of inst) out.push(strip(n, { kind: 'downloads', note: 'Installer, the app is already set up' }));
@@ -268,14 +297,16 @@ async function logsAndInstallers(tree, home, now) {
 
 // Copies of attachments Mail saved when you opened them. The originals stay in
 // the emails, so Mail fetches them again if you open them again.
-async function mailAttachments(home) {
-  const places = [
-    ['Mail attachments', 'Library/Containers/com.apple.mail/Data/Library/Mail Downloads'],
-    ['Mail attachments (old Mail)', 'Library/Mail Downloads'],
-  ];
+async function mailAttachments(home, platform = process.platform) {
+  const places = platform === 'win32'
+    ? [['Outlook attachments', 'AppData/Local/Microsoft/Windows/INetCache/Content.Outlook']]
+    : [
+        ['Mail attachments', 'Library/Containers/com.apple.mail/Data/Library/Mail Downloads'],
+        ['Mail attachments (old Mail)', 'Library/Mail Downloads'],
+      ];
   const out = [];
   for (const [name, rel] of places) {
-    const p = path.join(home, rel);
+    const p = path.join(home, ...rel.split('/'));
     const size = await sizeOf(p);
     if (size > 5 * MB) out.push({ name, path: p, size, kind: 'documents', mtime: await newestMtime(p), isDir: true, mode: 'empty', note: 'Opened attachments. Still in the emails.' });
   }
@@ -302,11 +333,11 @@ async function deepSuggestions(tree, { home = require('os').homedir(), now = Dat
   const [render, dups, leftovers, backups, dev, logs, mail] = await Promise.all([
     renderCaches(tree),
     findDuplicates(tree),
-    mac ? appLeftovers(home, now, listApps) : [],
-    mac ? iosBackups(home, now) : [],
-    devJunk(tree, home, now),
-    logsAndInstallers(tree, home, now),
-    mac ? mailAttachments(home) : [],
+    mac ? appLeftovers(home, now, listApps) : [], // Windows apps keep data under vendor names: too risky to guess
+    iosBackups(home, now, platform),
+    devJunk(tree, home, now, platform),
+    logsAndInstallers(tree, home, now, platform),
+    mailAttachments(home, platform),
   ]);
   return {
     renderCaches: group(render),
@@ -329,4 +360,4 @@ function sweepOnly(sugg) {
   return out;
 }
 
-module.exports = { mailAttachments, deepSuggestions, sweepOnly, isDeepPath, sizeOf, sameFile, findDuplicates, belongsToApp, renderCaches };
+module.exports = { parseXmlPlist, mailAttachments, deepSuggestions, sweepOnly, isDeepPath, sizeOf, sameFile, findDuplicates, belongsToApp, renderCaches };
