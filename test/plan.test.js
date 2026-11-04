@@ -229,3 +229,56 @@ test('Deep Clean on Windows: iPhone backups, crash dumps, Outlook, dev caches', 
   assert.strictEqual(deep.appLeftovers.items.length, 0);
   assert.ok(isDeepPath(path.join(home, 'AppData/Local/CrashDumps/app.dmp')));
 });
+
+test('a licence copied to another computer does not unlock Pro there', async () => {
+  const dir = tmp();
+  const a = createLicence({ dir, cfg, fetchImpl: fakeFetch(good), machineId: () => 'mac-a' });
+  await a.activate('KEY-1');
+  assert.equal(a.status().plan, 'pro');
+  const f = fakeFetch(good);
+  const b = createLicence({ dir, cfg, fetchImpl: f, machineId: () => 'mac-b' });
+  assert.equal(b.status().plan, 'free');
+  assert.equal(b.status().licenceProblem, 'other-computer');
+  await b.revalidate(true);
+  assert.equal(f.calls.length, 0);
+  // Releasing it there must not free the seat the first computer is using.
+  await b.deactivate();
+  assert.equal(f.calls.length, 0);
+});
+
+test('licences saved before machine binding are adopted by this computer', () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'gigapolis-plan.json'), JSON.stringify({ licence: { key: 'K', instanceId: 'i', status: 'active', validatedAt: Date.now() } }));
+  const lic = createLicence({ dir, cfg, machineId: () => 'mac-a' });
+  assert.equal(lic.status().plan, 'pro');
+  assert.equal(createLicence({ dir, cfg, machineId: () => 'mac-b' }).status().plan, 'free');
+});
+
+test('activation limit reached gives a clear message; seats are shown', async () => {
+  const full = fakeFetch(() => ({ activated: false, error: 'This license key has reached the activation limit.' }));
+  const r = await createLicence({ dir: tmp(), cfg, fetchImpl: full }).activate('KEY');
+  assert.equal(r.ok, false);
+  assert.match(r.error, /most computers allowed/);
+  const f = fakeFetch((e) => (e === 'activate' ? { ...good(e), license_key: { status: 'active', activation_limit: 3, activation_usage: 2 } } : good(e)));
+  const ok = await createLicence({ dir: tmp(), cfg, fetchImpl: f }).activate('KEY');
+  assert.deepEqual(ok.status.activations, { used: 2, limit: 3 });
+});
+
+test('refunded (disabled) key locks Pro at the next check', async () => {
+  let refunded = false;
+  let t = 1e12;
+  const f = fakeFetch((e) => (e === 'validate' && refunded ? { valid: false, error: 'license_key is disabled', license_key: { status: 'disabled' }, meta: { store_id: 1, product_id: 2 } } : good(e)));
+  const lic = createLicence({ dir: tmp(), cfg, fetchImpl: f, now: () => t });
+  await lic.activate('KEY');
+  refunded = true;
+  t += cfg.revalidateMs + 1;
+  await lic.revalidate();
+  assert.equal(lic.status().plan, 'free');
+  assert.equal(lic.status().licenceProblem, 'invalid');
+});
+
+test('a validatedAt date in the future (hand-edited file) is not trusted', () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'gigapolis-plan.json'), JSON.stringify({ licence: { key: 'K', instanceId: 'i', machine: 'unknown', status: 'active', validatedAt: Date.now() + 365 * 86400000 } }));
+  assert.equal(createLicence({ dir, cfg }).status().plan, 'free');
+});

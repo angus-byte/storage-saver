@@ -47,12 +47,12 @@ export function demoPlanApi(sizeOf) {
     openCheckout: async () => true,
     activateLicence: async (key) => {
       if (String(key).trim().toUpperCase() !== 'DEMO-PRO') return { ok: false, error: 'Demo: use the key DEMO-PRO' };
-      st = { ...st, plan: 'pro', capBytes: null, remainingBytes: null, email: 'you@example.com', keyHint: '…MO-PRO' };
+      st = { ...st, plan: 'pro', capBytes: null, remainingBytes: null, email: 'you@example.com', keyHint: '…MO-PRO', activations: { used: 1, limit: 3 } };
       emit();
       return { ok: true, status: { ...st } };
     },
     deactivateLicence: async () => {
-      st = { ...st, plan: 'free', capBytes: 20 * PGB, remainingBytes: Math.max(0, 20 * PGB - st.usedBytes), email: null, keyHint: null };
+      st = { ...st, plan: 'free', capBytes: 20 * PGB, remainingBytes: Math.max(0, 20 * PGB - st.usedBytes), email: null, keyHint: null, activations: null };
       emit();
       return { ok: true, status: { ...st } };
     },
@@ -257,6 +257,18 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
     </ul>`;
   }
 
+  function licenceNote() {
+    const p = st && st.licenceProblem;
+    if (!p) return '';
+    const msg =
+      p === 'other-computer'
+        ? `Your licence (${esc(st.keyHint || '')}) was activated on a different computer. Enter the key below to activate it here too.`
+        : p === 'invalid'
+          ? `Your licence (${esc(st.keyHint || '')}) is no longer valid. It may have been refunded or deactivated from another computer.`
+          : `Gigapolis couldn't check your licence online for a while. Connect to the internet to keep Pro on.`;
+    return `<div class="why">${msg}</div>`;
+  }
+
   function showUpgrade(reason, info) {
     const card = modal.querySelector('.card');
     if (isPro()) {
@@ -264,7 +276,8 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
         <span class="pro-badge">PRO</span><h2>Gigapolis Pro is on</h2>
         <p>Licence ${esc(st.keyHint || '')}${st.email ? ` · ${esc(st.email)}` : ''}${st.devPro ? ' · developer mode' : ''}</p>
         <label class="switch"><span><b>Weekly check-up</b><br><small class="muted">Rescans once a week in the background and alerts you when there is space to clear. Never deletes on its own.</small></span><input type="checkbox" id="pro-weekly" ${st.weekly.enabled ? 'checked' : ''}></label>
-        <div class="row"><button class="link" id="pro-deact">Move licence to another Mac (deactivate here)</button></div>
+        ${st.activations ? `<p class="hint">Activated on <b>${st.activations.used} of ${st.activations.limit}</b> computers.</p>` : ''}
+        <div class="row"><button class="link" id="pro-deact">Deactivate this computer (frees a seat for another one)</button></div>
         <div class="err" id="pro-err"></div>`;
       card.querySelector('#pro-weekly').onchange = async (e) => {
         st = await api.setWeekly(e.target.checked);
@@ -276,7 +289,7 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
         modal.hidden = true;
         renderChip();
         rerender();
-        toast('Licence released. This Mac is back on the free plan.');
+        toast('Licence released. This computer is back on the free plan.');
       };
     } else {
       const why =
@@ -288,7 +301,8 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
         <span class="pro-badge">PRO</span><h2>Gigapolis Pro</h2>
         <div class="price">${esc(st ? st.priceLabel : '$19.99')} <small>lifetime. Pay once, no subscription.</small></div>
         ${why}
-        ${more ? `<p style="margin-top:12px">Deep Clean found <b class="found">${fmt(more)}</b> more on this ${DEMO ? 'demo city' : 'Mac'}.</p>` : ''}
+        ${licenceNote()}
+        ${more ? `<p style="margin-top:12px">Deep Clean found <b class="found">${fmt(more)}</b> more on this ${DEMO ? 'demo city' : 'computer'}.</p>` : ''}
         ${featureList()}
         <div class="row"><button class="primary" id="pro-buy">Buy Pro · ${esc(st ? st.priceLabel : '$19.99')}</button></div>
         <p class="hint" style="margin-top:14px">Already bought it? Paste the licence key from your receipt email.</p>
