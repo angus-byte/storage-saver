@@ -117,7 +117,7 @@ const NIGHT_SECONDS = 4.5;
 // clock; cars, people and everything else keep their normal speed. Clicking
 // the Day / Night button stops the cycle and stays in that mode.
 const CYCLE_SECONDS = 120;
-const SUN_SWING = 0.9; // radians the sun / moon travel round the sky across the day / night
+const SUN_SWING = 0.6; // radians the sun / moon travel round the sky across the day / night
 let autoCycle = true;
 let cycleP = 0.04; // 0..1 through the day; starts just after sunrise
 let sunAngle = 0;
@@ -766,7 +766,8 @@ function applyNight() {
   hemi.color.lerp(_c2.setHex(0xffb98a), warm * 0.55);
   hemi.intensity = 0.4 + (0.35 - 0.4) * k;
   fill.intensity = 0.12 + (0.15 - 0.12) * k;
-  key.shadow.radius = 1.5 + 4.5 * k;
+  // Softer shadow edges while the sun is moving, so they glide rather than shimmer.
+  key.shadow.radius = (autoCycle ? 4 : 1.5) + 4.5 * k;
   renderer.toneMappingExposure = 0.98 + (0.95 - 0.98) * k;
   scene.environment = k < 0.5 ? envDay : envNight;
   scene.environmentIntensity = k < 0.5 ? 0.28 * (1 - k * 1.4) : 0.3 * (k - 0.3);
@@ -891,16 +892,9 @@ function toggleNight() {
 // Rotates the sun (key light) and moon round the city by sunAngle, on top of
 // the base position applyNight picks for the current nightK.
 const _keyBase = new THREE.Vector3(130, 95, 55);
-// The sun moves in small steps rather than every frame: a shadow-casting
-// light that creeps each frame makes every shadow edge shimmer.
-const SUN_STEP = 0.035; // radians (~2 degrees)
-const _keyWant = new THREE.Vector3();
-const _keyShown = new THREE.Vector3();
 function applySunAngle() {
   _keyBase.copy(key.position);
-  _keyWant.copy(key.position).applyAxisAngle(_yAxis, sunAngle);
-  if (!_keyShown.lengthSq() || _keyWant.angleTo(_keyShown) > SUN_STEP) _keyShown.copy(_keyWant);
-  key.position.copy(_keyShown);
+  key.position.applyAxisAngle(_yAxis, sunAngle);
   aimShafts();
   moon.position.copy(MOON_BASE).applyAxisAngle(_yAxis, sunAngle);
 }
