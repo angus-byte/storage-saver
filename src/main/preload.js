@@ -39,6 +39,15 @@ contextBridge.exposeInMainWorld('storage', {
   listStartup: () => ipcRenderer.invoke('startup:list'),
   removeStartup: (p) => ipcRenderer.invoke('startup:remove', p),
   openLoginItems: () => ipcRenderer.invoke('startup:openSettings'),
+  // Photo Studio
+  scanPhotos: () => ipcRenderer.invoke('photos:scan'),
+  cancelPhotos: () => ipcRenderer.invoke('photos:cancel'),
+  trashPhotos: (paths) => ipcRenderer.invoke('photos:trash', paths),
+  onPhotoProgress: (cb) => {
+    const handler = (_e, p) => cb(p);
+    ipcRenderer.on('photos:progress', handler);
+    return () => ipcRenderer.removeListener('photos:progress', handler);
+  },
   // Privacy (browser data)
   listBrowsers: () => ipcRenderer.invoke('privacy:list'),
   clearBrowser: (id, kinds) => ipcRenderer.invoke('privacy:clear', id, kinds),
