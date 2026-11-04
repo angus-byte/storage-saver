@@ -84,4 +84,6 @@ jobs:
           if [ "$SIGNED" = true ]; then PRE=false; else PRE=true; fi
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --title "Gigapolis $TAG" --notes "$NOTES" $([ "$PRE" = true ] && echo --prerelease)
           gh release upload "$TAG" $(ls dist/*.dmg dist/*.zip dist/*.blockmap dist/latest-mac.yml 2>/dev/null) --clobber
-          gh release edit "$TAG" --prerelease=$PRE
+          # The updater reads github.com/.../releases/latest, so a signed build must also be
+          # flagged "Latest" (a release created as a prerelease by the Windows job isn't).
+          if [ "$PRE" = true ]; then gh release edit "$TAG" --prerelease; else gh release edit "$TAG" --prerelease=false --latest; fi
