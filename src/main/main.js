@@ -3,7 +3,7 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const fsp = require('fs/promises');
-const { scan, suggestions, defaultRoots } = require('./scanner');
+const { scan, suggestions, defaultRoots, forget, clearDir, addToBin } = require('./scanner');
 const { createLicence } = require('./licence');
 const { machineId } = require('./machineid');
 const { deepSuggestions, sweepOnly, sizeOf, sameFile } = require('./deepclean');
@@ -188,6 +188,19 @@ async function updateSafe() {
   const items = ['caches', 'trash'].flatMap((k) => (s[k] ? s[k].items : []));
   safe = { state: 'ready', bytes: items.reduce((n, i) => n + i.size, 0), items };
   if (tray) tray.render();
+}
+
+// After a delete, update the last scan in place instead of rescanning, so the
+// tray's Safe Clean and Deep Clean don't offer things that are already gone.
+function noteRemoved(results, { emptied = null, bin = false } = {}) {
+  if (!lastTree) return;
+  const done = results.filter((r) => r.ok);
+  if (!done.length) return;
+  let bytes = 0;
+  if (emptied && done.length === results.length) bytes = clearDir(lastTree, emptied);
+  else for (const r of done) bytes += forget(lastTree, r.path);
+  if (!bin) addToBin(lastTree, bytes);
+  updateSafe();
 }
 
 async function diskFree() {
@@ -428,6 +441,7 @@ ipcMain.handle('fs:trash', async (_e, paths) => {
   const results = await trashPaths(paths);
   plan.recordDemolished(sum(sizes, results.filter((r) => r.ok).map((r) => r.path)));
   pushPlan();
+  noteRemoved(results);
   return results;
 });
 
@@ -439,6 +453,7 @@ ipcMain.handle('fs:trashDuplicate', async (_e, p, keep) => {
   if (!(await sameFile(p, keep))) return [{ path: p, ok: false, error: 'Not an exact copy any more, left in place' }];
   const results = await trashPaths([p]);
   pushPlan();
+  noteRemoved(results);
   return results;
 });
 
@@ -469,7 +484,11 @@ async function trashPaths(paths) {
 }
 
 // Empties the contents of a folder (e.g. a cache dir) into the Trash, keeping the folder itself.
-ipcMain.handle('fs:emptyFolder', (_e, dir) => emptyFolder(dir));
+ipcMain.handle('fs:emptyFolder', async (_e, dir) => {
+  const results = await emptyFolder(dir);
+  if (isAbs(dir)) noteRemoved(results, { emptied: dir, bin: isRecycleBin(dir) || (await isMacTrash(dir)) });
+  return results;
+});
 // The Trash / Recycle Bin itself: only the real one, at its real place.
 // Windows: C:\$Recycle.Bin or C:\$Recycle.Bin\<SID>. Mac: ~/.Trash.
 const isRecycleBin = (dir) => WIN && /^[A-Za-z]:\\\$Recycle\.Bin(\\S-1-[\d-]+)?\\?$/i.test(dir);
@@ -814,6 +833,7 @@ ipcMain.handle('photos:trash', async (_e, paths) => {
   const blocked = plan.checkAllowance(sum(sizes, go));
   if (blocked) return [...results, ...go.map((p) => ({ path: p, ...blocked }))];
   const done = await trashPaths(go);
+  noteRemoved(done);
   const gone = new Set(done.filter((r) => r.ok).map((r) => r.path));
   for (const g of [...lastPhotos.exact, ...lastPhotos.similar]) g.items = g.items.filter((i) => !gone.has(i.path));
   plan.recordDemolished(sum(sizes, done.filter((r) => r.ok).map((r) => r.path)));

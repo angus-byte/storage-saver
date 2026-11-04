@@ -260,10 +260,78 @@ function suggestions(tree, now = Date.now()) {
   };
 }
 
+// --- Keeping a scan current after a delete (no rescan) ----------------------
+// The renderer has the same helpers (src/renderer/app.js, "Tree upkeep").
+const isUnder = (p, dir) => p.startsWith(dir + '/') || p.startsWith(dir + '\\');
+const BIN_NAME = /^(\.trash|\$recycle\.bin)$/i;
+
+/** Nodes from the root down to `p`, or to its deepest scanned folder. */
+function chainTo(tree, p) {
+  if (!tree || !p || !(tree.path === p || isUnder(p, tree.path))) return null;
+  const chain = [tree];
+  for (let n = tree; n.path !== p; ) {
+    n = (n.children || []).find((c) => !c.aggregate && (c.path === p || (c.isDir && isUnder(p, c.path))));
+    if (!n) break;
+    chain.push(n);
+  }
+  return chain;
+}
+
+function shrink(chain, node) {
+  for (const a of chain) {
+    a.size = Math.max(0, a.size - node.size);
+    a.files = Math.max(0, (a.files || 0) - (node.files || 0));
+    if (a.types && node.types) for (const [k, v] of Object.entries(node.types)) if (a.types[k]) a.types[k] = Math.max(0, a.types[k] - v);
+  }
+}
+
+/** Takes the item at `p` out of the tree. Returns the bytes it held (0 if not in the scan). */
+function forget(tree, p) {
+  const chain = chainTo(tree, p);
+  if (!chain || chain.length < 2 || chain[chain.length - 1].path !== p) return 0;
+  const node = chain.pop();
+  const parent = chain[chain.length - 1];
+  parent.children.splice(parent.children.indexOf(node), 1);
+  shrink(chain, node);
+  return node.size;
+}
+
+/** Empties a folder in the tree, keeping the folder. Returns the bytes it held. */
+function clearDir(tree, dir) {
+  const chain = chainTo(tree, dir);
+  if (!chain || chain[chain.length - 1].path !== dir) return 0;
+  const node = { ...chain[chain.length - 1], types: { ...(chain[chain.length - 1].types || {}) } };
+  shrink(chain, node);
+  chain[chain.length - 1].children = [];
+  return node.size;
+}
+
+/** The Trash / Recycle Bin folder inside the scan, if the scan covers it. */
+function findBin(tree) {
+  return collect(tree, (n) => n.isDir && BIN_NAME.test(path.basename(n.path))).sort((a, b) => a.path.length - b.path.length)[0] || null;
+}
+
+/** Things moved to the Trash still take space there until it's emptied. */
+function addToBin(tree, bytes) {
+  const bin = bytes > 0 && findBin(tree);
+  if (!bin) return null;
+  for (const a of chainTo(tree, bin.path)) {
+    a.size += bytes;
+    if (a.types) a.types.other = (a.types.other || 0) + bytes;
+  }
+  bin.children = bin.children || [];
+  let lot = bin.children.find((c) => c.aggregate && c.moved);
+  if (!lot) bin.children.push((lot = { name: 'Moved here by Gigapolis', path: bin.path, size: 0, isDir: false, kind: 'trash', mtime: Date.now(), files: 0, aggregate: true, moved: true, types: {} }));
+  lot.size += bytes;
+  lot.types.other = (lot.types.other || 0) + bytes;
+  bin.children.sort((a, b) => b.size - a.size);
+  return bin;
+}
+
 /** Default places to scan for a user. */
 function defaultRoots() {
   const home = require('os').homedir();
   return [home];
 }
 
-module.exports = { scan, classify, collect, suggestions, defaultRoots, ext, isSafeCache, TYPE_EXT, BUNDLE_TYPE };
+module.exports = { scan, classify, collect, suggestions, defaultRoots, forget, clearDir, addToBin, findBin, ext, isSafeCache, TYPE_EXT, BUNDLE_TYPE };
