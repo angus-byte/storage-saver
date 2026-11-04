@@ -824,9 +824,9 @@ function applySunAngle() {
 }
 const smooth = (x) => x * x * (3 - 2 * x);
 // Day plan as a fraction of the cycle: day, dusk, night, dawn.
-const DUSK_AT = 0.42;
-const NIGHT_AT = 0.54;
-const DAWN_AT = 0.88;
+const DUSK_AT = 0.36;
+const NIGHT_AT = 0.56;
+const DAWN_AT = 0.8;
 function cycleState(p) {
   if (p < DUSK_AT) return { k: 0, a: SUN_SWING * (1 - p / DUSK_AT) };
   if (p < NIGHT_AT) return { k: smooth((p - DUSK_AT) / (NIGHT_AT - DUSK_AT)), a: 0 };
