@@ -35,6 +35,22 @@ const api = DEMO
     }
   : window.storage;
 if (DEMO) api.deepScan = async () => mockDeep();
+// Top-level user / system folders (~/Pictures, /Applications…) are never
+// offered for Demolish. Some (Pictures, Downloads…) can have their contents cleared.
+const protectedMap = new Map();
+const normPath = (p) => String(p || '').replace(/[\\/]+$/, '').toLowerCase() || '/';
+(async () => {
+  let list = [];
+  try {
+    if (api.protectedPaths) list = await api.protectedPaths();
+    else if (DEMO) {
+      const h = '/Users/angus';
+      list = [['/', 0], [h, 0], [h + '/Library', 0], ['/Applications', 0], ...['Desktop', 'Documents', 'Downloads', 'Movies', 'Music', 'Pictures'].map((f) => [h + '/' + f, 1])].map(([p, c]) => ({ path: p, name: p.split('/').pop(), contents: !!c }));
+    }
+  } catch {}
+  for (const r of list) protectedMap.set(normPath(r.path), r);
+})();
+const protectionOf = (p) => protectedMap.get(normPath(p)) || null;
 // Size of a scanned path (demo mode uses it to apply the free allowance).
 function findSize(p) {
   const lists = [...Object.values(state.suggestions || {}), ...Object.values(state.deep || {})];
@@ -2893,7 +2909,13 @@ async function demolish(item) {
   const res = await api.trash([item.path]);
   if (pro.handleBlocked(res)) return;
   if (!res.every((r) => r.ok)) {
-    toast('Could not move to Trash: ' + (res.find((r) => !r.ok) || {}).error);
+    const bad = res.find((r) => !r.ok) || {};
+    if (bad.error === 'protected') {
+      if (bad.contents) return clearContents(item);
+      toast(`${bad.name || item.name} is a macOS system folder and has to stay. Open it to pick files inside.`);
+      return;
+    }
+    trashError(bad);
     return;
   }
   // The category building shrinks, then the tree updates locally (no rescan needed).
@@ -3006,12 +3028,27 @@ function fmt(bytes) {
 function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
+// Empties a protected folder (e.g. ~/Pictures) into the Trash, keeping the folder.
+async function clearContents(item) {
+  const res = await api.emptyFolder(item.path);
+  if (pro.handleBlocked(res)) return;
+  const bad = res.filter((r) => !r.ok);
+  if (bad.length && bad.length === res.length) return trashError(bad[0]);
+  toast(`Moved the contents of ${item.name} to Trash${bad.length ? ` · ${bad.length} couldn't be moved` : ''}. Empty the Trash to reclaim the space.`);
+  await runScan(state.tree ? state.tree.path : null);
+}
+function trashError(r) {
+  if (r.error === 'protected') return toast(`${r.name || 'That folder'} is a macOS system folder and has to stay.`);
+  toast('Could not move to Trash: ' + (r.error || 'unknown error'));
+  if (r.perm && api.openPermissions) setTimeout(() => api.openPermissions(), 1200);
+}
+
 function toast(msg) {
   const t = $('toast');
   t.textContent = msg;
   t.hidden = false;
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => (t.hidden = true), 3500);
+  toast.timer = setTimeout(() => (t.hidden = true), msg.length > 90 ? 7000 : 3500);
 }
 
 function renderDisk() {
@@ -3077,7 +3114,8 @@ function fileList(items, top) {
   for (const it of items.slice(0, 200)) {
     const li = document.createElement('li');
     const canOpen = it.isDir && (it.children || []).length > 0;
-    const canDemolish = it.path && !it.aggregate && !it.virtual;
+    const guard = it.path && protectionOf(it.path);
+    const canDemolish = it.path && !it.aggregate && !it.virtual && !guard;
     const sub = top && it.rel && it.rel !== it.name ? `<small>${esc(it.rel.slice(0, -it.name.length - 1))}</small>` : '';
     li.innerHTML = `<div class="row"><span class="chev">${canOpen ? '›' : ''}</span><span class="icon">${it.isDir ? '📁' : it.aggregate ? '🗂' : '📄'}</span><span class="name" title="${esc(it.path || '')}">${esc(it.name)}${sub}</span><span class="size">${fmt(it.size)}</span></div>`;
     const row = li.firstChild;
@@ -3087,13 +3125,19 @@ function fileList(items, top) {
     const showActions = () => {
       actions.innerHTML =
         (it.path && !it.virtual ? `<button data-act="reveal">📍 Show in Finder</button>` : '') +
-        (canDemolish ? `<button data-act="demolish" class="demolish">🧨 Demolish</button>` : `<span class="muted">${it.aggregate ? 'Lots of small files: open the folder in Finder to pick.' : ''}</span>`);
+        (canDemolish
+          ? `<button data-act="demolish" class="demolish">🧨 Demolish</button>`
+          : guard && guard.contents
+            ? `<button data-act="clear" class="demolish">🧹 Clear contents</button>`
+            : `<span class="muted">${guard ? 'A macOS system folder, it has to stay. Open it to pick files.' : it.aggregate ? 'Lots of small files: open the folder in Finder to pick.' : ''}</span>`);
     };
     actions.onclick = async (e) => {
       const act = e.target.closest('[data-act]');
       if (!act) return;
       if (act.dataset.act === 'reveal') api.reveal(it.path);
       else if (act.dataset.act === 'demolish') actions.innerHTML = `<button data-act="confirm" class="demolish">Yes, demolish ${fmt(it.size)}</button><button data-act="keep">Keep it</button>`;
+      else if (act.dataset.act === 'clear') actions.innerHTML = `<button data-act="confirm-clear" class="demolish">Yes, move everything inside ${esc(it.name)} to Trash (${fmt(it.size)})</button><button data-act="keep">Keep it</button>`;
+      else if (act.dataset.act === 'confirm-clear') await clearContents(it);
       else if (act.dataset.act === 'keep') showActions();
       else if (act.dataset.act === 'confirm') await demolish(it);
     };

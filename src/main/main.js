@@ -8,6 +8,8 @@ const { createLicence } = require('./licence');
 const { deepSuggestions, sweepOnly, sizeOf, sameFile } = require('./deepclean');
 const config = require('./config');
 const cityhall = require('./cityhall');
+const { createProtection, friendlyError } = require('./protect');
+const protection = createProtection();
 
 let win;
 let currentScan = null;
@@ -114,6 +116,8 @@ function hasFullDiskAccess() {
 
 ipcMain.handle('perm:status', () => ({ platform: process.platform, fullDisk: hasFullDiskAccess() }));
 
+ipcMain.handle('fs:protected', () => protection.list());
+
 ipcMain.handle('perm:open', () => {
   if (process.platform === 'darwin') shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles');
   return true;
@@ -147,6 +151,9 @@ const sum = (sizes, paths) => paths.reduce((n, p) => n + (sizes.get(p) || 0), 0)
 // Moves items to the OS Trash / Recycle Bin (never a permanent delete).
 // Free plan: refuses the whole request if it would pass the allowance.
 ipcMain.handle('fs:trash', async (_e, paths) => {
+  // Never trash a top-level user or system folder (e.g. ~/Pictures, /Applications).
+  const guarded = paths.map((p) => [p, protection.check(p)]).filter(([, r]) => r);
+  if (guarded.length) return guarded.map(([p, r]) => ({ path: p, ok: false, error: 'protected', name: r.name, contents: r.contents }));
   const sizes = await measure(paths);
   const blocked = plan.checkAllowance(sum(sizes, paths));
   if (blocked) return paths.map((p) => ({ path: p, ...blocked }));
@@ -170,6 +177,10 @@ async function trashPaths(paths) {
   const results = [];
   for (const p of paths) {
     try {
+      if (protection.isProtected(p)) {
+        results.push({ path: p, ok: false, error: 'protected' });
+        continue;
+      }
       if (!fs.existsSync(p)) {
         results.push({ path: p, ok: false, error: 'missing' });
         continue;
@@ -177,7 +188,7 @@ async function trashPaths(paths) {
       await shell.trashItem(p);
       results.push({ path: p, ok: true });
     } catch (err) {
-      results.push({ path: p, ok: false, error: String(err.message || err) });
+      results.push({ path: p, ok: false, ...friendlyError(err, p) });
     }
   }
   return results;
@@ -185,13 +196,17 @@ async function trashPaths(paths) {
 
 // Empties the contents of a folder (e.g. a cache dir) into the Trash, keeping the folder itself.
 ipcMain.handle('fs:emptyFolder', async (_e, dir) => {
+  const guard = protection.check(dir);
+  if (guard && !guard.contents) return [{ path: dir, ok: false, error: 'protected', name: guard.name, contents: false }];
   let entries;
   try {
     entries = await fsp.readdir(dir);
   } catch (err) {
-    return [{ path: dir, ok: false, error: String(err.message || err) }];
+    return [{ path: dir, ok: false, ...friendlyError(err, dir) }];
   }
-  const paths = entries.map((name) => path.join(dir, name));
+  // Skip hidden system files (.localized, .DS_Store) and anything protected.
+  const paths = entries.filter((name) => name !== '.localized').map((name) => path.join(dir, name)).filter((p) => !protection.isProtected(p));
+  if (!paths.length) return [{ path: dir, ok: true }];
   const sizes = await measure(paths);
   const blocked = plan.checkAllowance(sum(sizes, paths));
   if (blocked) return [{ path: dir, ...blocked }];
@@ -201,7 +216,7 @@ ipcMain.handle('fs:emptyFolder', async (_e, dir) => {
       await shell.trashItem(p);
       results.push({ path: p, ok: true });
     } catch (err) {
-      results.push({ path: p, ok: false, error: String(err.message || err) });
+      results.push({ path: p, ok: false, ...friendlyError(err, p) });
     }
   }
   plan.recordDemolished(sum(sizes, results.filter((r) => r.ok).map((r) => r.path)));
@@ -316,7 +331,7 @@ ipcMain.handle('apps:uninstall', async (_e, appPath) => {
   pushPlan();
   appsCache = null;
   const appRes = results[0];
-  if (!appRes.ok) return { ok: false, error: /permission|not permitted|EACCES|EPERM/i.test(appRes.error) ? 'macOS needs your password for this one. Drag it to the Bin in Finder.' : appRes.error, results };
+  if (!appRes.ok) return { ok: false, error: appRes.perm || /permission|not permitted|EACCES|EPERM/i.test(appRes.error) ? 'macOS needs your password for this one. Drag it to the Bin in Finder.' : appRes.error, results };
   return { ok: true, freed: sum(sizes, results.filter((r) => r.ok).map((r) => r.path)), results };
 });
 
