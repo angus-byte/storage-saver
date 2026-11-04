@@ -352,7 +352,7 @@ function watchFlags({ name, program, programExists, signed, hidden }) {
 const checkable = (p) => /^[a-z]:\\/i.test(p || '') && !/%/.test(p);
 
 /** PowerShell's raw startup data → Rush Hour items. Pure apart from `exists` / `signed`. */
-async function buildStartup(raw, { exists: ex = exists, signed = {} } = {}) {
+async function buildStartup(raw, { exists: ex = exists, signed = {}, env = process.env } = {}) {
   const off = new Set(arr(raw && raw.off).map(low));
   const procs = new Set(arr(raw && raw.procs).map(low));
   const items = [];
@@ -365,7 +365,7 @@ async function buildStartup(raw, { exists: ex = exists, signed = {} } = {}) {
   };
   for (const r of arr(raw && raw.run)) {
     if (off.has(low(`${r.hive}|${r.approved}|${r.name}`)) || off.has(low(`HKCU|${r.approved}|${r.name}`))) continue; // already switched off in Task Manager
-    const program = programOf(r.command);
+    const program = programOf(r.command, env);
     const id = `${r.hive}\\${r.key}\\${r.name}`;
     await add({ name: r.name, label: r.command, path: 'reg:' + id, reveal: checkable(program) ? program : '', program, scope: r.scope, kind: 'run', regName: r.name, approved: r.approved, canRemove: r.scope === 'you' });
   }
@@ -376,7 +376,7 @@ async function buildStartup(raw, { exists: ex = exists, signed = {} } = {}) {
     await add({ name: base, label: pw.basename(f.file), path: f.file, reveal: f.file, program, scope: f.scope, kind: 'folder', canRemove: f.scope === 'you' }, !!f.hidden);
   }
   for (const t of arr(raw && raw.tasks)) {
-    const program = programOf(t.program);
+    const program = programOf(t.program, env);
     await add({ name: t.name, label: `${t.path}${t.name}`, path: `task:${t.path}${t.name}`, reveal: checkable(program) ? program : '', program, scope: 'all', kind: 'task', canRemove: false, running: !!t.running });
   }
   const rank = (i) => (i.flags.includes('adware') ? 0 : i.flags.length ? 1 : 2);

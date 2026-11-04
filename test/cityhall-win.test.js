@@ -91,7 +91,7 @@ test('Rush Hour on Windows: Run keys, Startup folder, tasks, with Neighbourhood 
     procs: ['C:\\Users\\a\\AppData\\Roaming\\Spotify\\Spotify.exe'],
   };
   const present = new Set(['C:\\Users\\a\\AppData\\Roaming\\Spotify\\Spotify.exe', 'C:\\Users\\a\\AppData\\Local\\Temp\\upd.exe', 'C:\\Program Files (x86)\\Lavasoft\\Web Companion\\WebCompanion.exe', 'C:\\Tools\\notes.exe', 'C:\\Program Files (x86)\\Google\\Update\\GoogleUpdate.exe']);
-  const items = await w.buildStartup(raw, { exists: async (p) => present.has(p), signed: { 'c:\\tools\\notes.exe': false } });
+  const items = await w.buildStartup(raw, { exists: async (p) => present.has(p), signed: { 'c:\\tools\\notes.exe': false }, env: {} });
   const by = Object.fromEntries(items.map((i) => [i.name, i]));
   assert.ok(!by['Off already'], 'switched off in Task Manager: not listed');
   assert.strictEqual(items[0].name, 'WebCompanion'); // adware first
