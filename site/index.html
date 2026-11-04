@@ -265,9 +265,14 @@ fetch('https://api.github.com/repos/angus-byte/storage-saver/releases/latest')
     if (/\.exe$/i.test(href)) return 'win';
     return 'releases';
   };
+  // Count at most one download click per platform per tab, and only real (trusted) clicks, not script-dispatched ones.
   document.addEventListener('click', function (e) {
+    if (!e.isTrusted) return;
     var a = e.target.closest && e.target.closest('[data-dl], #dl-alt, #dl-win');
-    if (a && a.getAttribute('href') !== '#download') send('download', platform(a.href), src);
+    if (!a || a.getAttribute('href') === '#download') return;
+    var p = platform(a.href), key = 'gp_dl_' + p;
+    try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch (e2) {}
+    send('download', p, src);
   });
 })();
 </script>

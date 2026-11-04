@@ -11,6 +11,14 @@ export function isBot(ua) {
   return !ua || ua.length < 20 || BOT.test(ua);
 }
 
+// Extra signals: real browsers always send Accept-Language; Cloudflare's bot score/verified-bot flag when the plan provides it.
+export function looksAutomated(request) {
+  if (!request.headers.get('Accept-Language')) return true;
+  const bm = request.cf && request.cf.botManagement;
+  if (bm && (bm.verifiedBot || (typeof bm.score === 'number' && bm.score > 0 && bm.score < 30))) return true;
+  return false;
+}
+
 export function cleanSource(s) {
   s = String(s || '').toLowerCase().trim().replace(/^https?:\/\//, '').replace(/^www\./, '').split(/[/?#]/)[0];
   s = s.replace(/[^a-z0-9._-]/g, '').slice(0, 40);
@@ -35,7 +43,7 @@ export async function handleTrack(request, env, now = Date.now()) {
   const site = request.headers.get('Sec-Fetch-Site');
   const origin = request.headers.get('Origin');
   const host = new URL(request.url).host;
-  if (isBot(ua)) return 'bot';
+  if (isBot(ua) || looksAutomated(request)) return 'bot';
   if (site && site !== 'same-origin') return 'cross-site';
   if (origin && new URL(origin).host !== host) return 'cross-site';
   if (!env || !env.STATS_DB) return 'no-db';
