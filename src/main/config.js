@@ -18,8 +18,11 @@ module.exports = {
   // lifetime of the install. Emptying the Trash itself is never counted.
   freeCapBytes: 20 * GB,
   // Re-check a Pro licence online this often, and keep Pro working offline
-  // for this long after the last successful check.
-  revalidateMs: 3 * 86400000,
-  offlineGraceMs: 30 * 86400000,
+  // for this long after the last successful check. A refunded key locks Pro
+  // at the next online check, or after the grace period if kept offline.
+  // Seats per key are set in Lemon Squeezy (product → licence keys →
+  // activation limit), not here.
+  revalidateMs: 1 * 86400000,
+  offlineGraceMs: 14 * 86400000,
   weeklyMs: 7 * 86400000,
 };

@@ -5,6 +5,7 @@ const fs = require('fs');
 const fsp = require('fs/promises');
 const { scan, suggestions, defaultRoots } = require('./scanner');
 const { createLicence } = require('./licence');
+const { machineId } = require('./machineid');
 const { deepSuggestions, sweepOnly, sizeOf, sameFile } = require('./deepclean');
 const config = require('./config');
 const cityhall = require('./cityhall');
@@ -93,7 +94,7 @@ if (WIN) app.setAppUserModelId('com.sommarfilms.storagesaver');
 app.whenReady().then(() => {
   settings = createSettings({ dir: app.getPath('userData') });
   drives = createDrives({ file: path.join(app.getPath('userData'), 'drives.json') });
-  plan = createLicence({ dir: app.getPath('userData'), forcePro: !app.isPackaged && process.env.GIGAPOLIS_PRO === '1' });
+  plan = createLicence({ dir: app.getPath('userData'), machineId, forcePro: !app.isPackaged && process.env.GIGAPOLIS_PRO === '1' });
   plan.revalidate().then(pushPlan);
   setInterval(() => plan.revalidate().then(pushPlan), 6 * 3600000);
   startWeeklyCheckup();
