@@ -25,7 +25,7 @@ app = app
   .replace("import { mockTree, mockSuggestions, mockDisk } from './mock.js';\n", '')
   .replace("import { initPro, demoPlanApi, mockDeep } from './pro.js';\n", '')
   .replace("import { initSeasons } from './seasons.js';\n", '')
-  .replace("import { localizeDom } from './platform.js';\n", '')
+  .replace("import { localizeDom, IS_WIN } from './platform.js';\n", '')
   .replace("import { initDrives } from './drives.js';\n", '');
 
 html = html
