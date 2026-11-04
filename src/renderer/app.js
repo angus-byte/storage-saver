@@ -6,7 +6,7 @@ import { initPrivacy } from './privacy.js';
 import { initPerformance } from './perf.js';
 import { initMaintenance } from './maintenance.js';
 import { squarify } from './treemap.js';
-import { categorize, CATEGORIES } from './categories.js';
+import { categorize, CATEGORIES, fileRowClick } from './categories.js';
 import { mockTree, mockSuggestions, mockDisk } from './mock.js';
 import { initPro, demoPlanApi, mockDeep } from './pro.js';
 import { initSeasons } from './seasons.js';
@@ -3343,23 +3343,31 @@ function fileList(items, top) {
       else if (act.dataset.act === 'keep') showActions();
       else if (act.dataset.act === 'confirm') await demolish(it);
     };
-    row.onclick = () => {
-      const picked = !li.classList.contains('picked');
-      for (const o of document.querySelectorAll('#files li.picked')) {
-        if (o === li) continue;
-        o.classList.remove('picked');
-        const bar = o.querySelector(':scope > .row-actions');
-        if (bar) bar.remove();
-      }
-      li.classList.toggle('picked', picked);
-      if (picked) {
+    const unpick = (o) => {
+      o.classList.remove('picked');
+      const bar = o.querySelector(':scope > .row-actions');
+      if (bar) bar.remove();
+    };
+    const click = (where) => {
+      const next = fileRowClick({ open: li.classList.contains('open'), picked: li.classList.contains('picked'), canOpen }, where);
+      if (next.picked) {
+        for (const o of document.querySelectorAll('#files li.picked')) if (o !== li) unpick(o);
+        li.classList.add('picked');
         showActions();
         row.after(actions);
-      } else actions.remove();
+      } else unpick(li);
       if (!canOpen) return;
-      li.classList.toggle('open', picked);
-      if (picked && !li.querySelector('ul')) li.appendChild(fileList(it.children, false));
+      li.classList.toggle('open', next.open);
+      // Closing a folder drops any menu picked inside it.
+      if (!next.open) for (const o of li.querySelectorAll('li.picked')) unpick(o);
+      if (next.open && !li.querySelector(':scope > ul')) li.appendChild(fileList(it.children, false));
     };
+    row.onclick = () => click('row');
+    if (canOpen)
+      row.querySelector('.chev').onclick = (e) => {
+        e.stopPropagation();
+        click('chev');
+      };
     ul.appendChild(li);
   }
   if (items.length > 200) {

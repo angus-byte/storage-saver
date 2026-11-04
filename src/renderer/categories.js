@@ -181,3 +181,13 @@ export function categorize(tree) {
   }
   return out;
 }
+
+// Files tab: what a click does to a row. Opening a folder and picking it (which
+// shows its Demolish menu) are separate, so a folder whose child was picked
+// still collapses on the first click instead of just re-showing its menu.
+// where: 'chev' (the arrow) or 'row'. Returns the row's new { open, picked }.
+export function fileRowClick({ open, picked, canOpen }, where) {
+  if (!canOpen) return { open: false, picked: !picked };
+  if (where === 'chev') return { open: !open, picked: open ? false : picked };
+  return open ? { open: false, picked: false } : { open: true, picked: true };
+}
