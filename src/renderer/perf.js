@@ -5,7 +5,6 @@
 import { IS_WIN } from './platform.js';
 
 const PERF_CSS = `
-#tabs { flex-wrap: wrap; }
 #tab-power .ps-hero { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 #tab-power .dial { background: var(--soft); border-radius: 14px; padding: 10px 12px; position: relative; overflow: hidden; }
 #tab-power .dial .lbl { font-size: 11.5px; color: var(--muted); font-weight: 600; display: flex; align-items: center; gap: 6px; }
