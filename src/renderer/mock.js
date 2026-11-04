@@ -84,6 +84,24 @@ export function mockTree() {
     ], p),
     (p) => dir('Music', 'media', [small(4000, 18 * GB, 'media')], p),
     (p) => dir('.Trash', 'trash', [small(120, 5.5 * GB, 'trash')], p),
+    // Loose folders with no well-known name: grouped by what is inside them.
+    (p) => dir('Client Work 2024', 'other', [
+      (q) => file('Nike_spot_rushes.mov', 14 * GB, 'media', 300, q),
+      (q) => file('Nike_spot_grade.mov', 6 * GB, 'media', 290, q),
+      (q) => file('call_sheet.pdf', 2 * MB, 'documents', 300, q),
+    ], p),
+    (p) => dir('old laptop stuff', 'other', [
+      (q) => file('MacBook_2019_backup.zip', 9 * GB, 'downloads', 700, q),
+      (q) => file('photos_export.zip', 3 * GB, 'downloads', 690, q),
+    ], p),
+    (p) => dir('samples', 'other', [
+      (q) => file('drum_kit_vol2.wav', 900 * MB, 'media', 200, q),
+      (q) => file('ambience_rain.wav', 600 * MB, 'media', 210, q),
+    ], p),
+    (p) => dir('Tax 2025', 'other', [(q) => file('receipts.pdf', 300 * MB, 'documents', 100, q), (q) => file('return.pdf', 40 * MB, 'documents', 100, q)], p),
+    (p) => dir('Dropbox', 'other', [small(2600, 8.5 * GB, 'other')], p),
+    (p) => dir('.vscode', 'other', [small(900, 700 * MB, 'other')], p),
+    (p) => dir('.npm', 'cache', [small(20000, 1.6 * GB, 'cache')], p),
     (p) => dir('code', 'other', [
       (q) => dir('website', 'other', [(r) => dir('node_modules', 'cache', [small(45000, 1.8 * GB, 'cache')], r), small(500, 60 * MB, 'other')], q),
       (q) => dir('tools', 'other', [(r) => dir('node_modules', 'cache', [small(30000, 1.1 * GB, 'cache')], r), small(400, 40 * MB, 'other')], q),
