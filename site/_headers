@@ -9,3 +9,13 @@
 /stats*
   X-Robots-Tag: noindex
   Cache-Control: no-store
+
+# Keep duplicate hostnames out of search; getgigapolis.com is canonical.
+https://:project.pages.dev/*
+  X-Robots-Tag: noindex
+
+https://:version.:project.pages.dev/*
+  X-Robots-Tag: noindex
+
+https://www.getgigapolis.com/*
+  X-Robots-Tag: noindex
