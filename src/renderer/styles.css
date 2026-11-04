@@ -217,8 +217,9 @@ button.link { background: none; border: none; color: var(--accent); padding: 0 4
 .file-list li.cat-row:hover, .file-list .row:hover { background: var(--soft); }
 .file-list .cat-row .name { flex: 1; font-weight: 600; }
 .file-list .row { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 10px; }
-.file-list .chev { width: 10px; color: var(--muted); transition: transform 0.15s; cursor: pointer; }
+.file-list .chev { width: 16px; text-align: center; color: var(--muted); transition: transform 0.15s; cursor: pointer; }
 .file-list li.open > .row .chev { transform: rotate(90deg); }
+.file-list li:not(.open) > .file-list { display: none; }
 .file-list .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .file-list .name small { display: block; color: var(--muted); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
 .file-list .size { color: var(--muted); font-variant-numeric: tabular-nums; }
