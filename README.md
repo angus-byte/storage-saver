@@ -19,6 +19,7 @@ Click **Scan my files** (scans your home folder) or **Choose folder…** for any
 - **☾ Night** (top right) switches to night: stars, lit windows, lamps, headlights and neon.
 - **While scanning** the city is a construction site: roads laid, cranes swinging, road crews patching, and each top-level folder's building goes up the moment it has been measured.
 - **Full Disk Access** (macOS): a one-time screen opens the exact System Settings switch so there are no per-folder pop-ups.
+- **Performance** tab (the Power Station): live memory (with macOS memory pressure), processor load and a 2-minute graph, the heaviest apps by memory or processor (helpers grouped under their app), disk traffic, battery and heat. **Quit** asks first, and offers Force quit if the app doesn't close; macOS / Windows system processes never get a Quit button. Samples every 3 s only while the tab is open. Free.
 - **Safe clean** lists what can go. Everything goes to the Trash / Recycle Bin, never a permanent delete.
 
 ## Browser demo
@@ -57,6 +58,7 @@ Builds come from the **Build Mac app** GitHub Action (run it by hand or push a `
 | Demolish (move to Trash) | 20 GB in total | Unlimited |
 | Deep Clean: render caches, duplicates, app leftovers, old iPhone backups, dev junk, logs/installers | see what's found | ✓ |
 | Weekly check-up with alert | | ✓ |
+| Performance tab: live memory / processor monitor, quit heavy apps | ✓ | ✓ |
 
 Pro is unlocked with a **Lemon Squeezy licence key** (no account or login). Checkout link, store id (513897) and product id (1496849) live in `src/main/config.js`; env vars `GIGAPOLIS_CHECKOUT_URL` / `GIGAPOLIS_STORE_ID` / `GIGAPOLIS_PRODUCT_ID` override them. The key is checked online on activation and every few days after; Pro keeps working offline for 30 days. The free allowance is enforced in the main process. For development, `GIGAPOLIS_PRO=1 npm start` forces Pro (unpackaged builds only). In the browser demo the key `DEMO-PRO` unlocks Pro.
 

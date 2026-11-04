@@ -3,6 +3,7 @@ import { OrbitControls } from './vendor/OrbitControls.js';
 import { initCityHall } from './cityhall.js';
 import { initPhotos } from './photos.js';
 import { initPrivacy } from './privacy.js';
+import { initPerformance } from './perf.js';
 import { squarify } from './treemap.js';
 import { categorize, CATEGORIES } from './categories.js';
 import { mockTree, mockSuggestions, mockDisk } from './mock.js';
@@ -3454,6 +3455,7 @@ api.diskInfo().then((d) => {
 initCityHall({ api, fmt, esc, toast, pro, DEMO });
 initPhotos({ api, fmt, esc, toast, pro, DEMO });
 initPrivacy({ api, fmt, esc, toast, pro, DEMO });
+const perf = initPerformance({ api, fmt, esc, toast, DEMO });
 drives = initDrives({ api, esc, toast, runScan, DEMO });
 if (DEMO) {
   $('btn-scan').querySelector('span').textContent = 'Scan (demo data)';
@@ -3461,4 +3463,4 @@ if (DEMO) {
 }
 
 // Exposed for automated UI checks.
-window.__storageSaver = { state, openCategory, layout, toggleNight, buildSite, setScanProgress, pro, seasons, camera, controls, blocks };
+window.__storageSaver = { perf, state, openCategory, layout, toggleNight, buildSite, setScanProgress, pro, seasons, camera, controls, blocks };
