@@ -122,14 +122,14 @@ export function initCityHall({ api, fmt, esc, toast, pro, DEMO }) {
   page.hidden = true;
   page.innerHTML = `
     <div class="section-head"><span>🚚 Moving Day</span><span class="muted" id="hall-apps-total"></span></div>
-    <p class="hint" style="margin-top:0;margin-bottom:8px">Every app is a business in the city. Moving one out takes its boxes with it: support files, caches and settings in your Library.</p>
+    <p class="hint" style="margin-top:0;margin-bottom:8px">${IS_WIN ? 'Every app is a business in the city. Moving one out runs its own uninstaller, then takes its boxes with it: settings and caches in AppData and ProgramData.' : 'Every app is a business in the city. Moving one out takes its boxes with it: support files, caches and settings in your Library.'}</p>
     <div class="chips"><button class="chip on" data-f="all">All apps</button><button class="chip" data-f="unused">Closed for 6+ months</button></div>
     <div id="hall-apps"><div class="empty">Open this tab to look round the city…</div></div>
     <div class="section-head hall-gap"><span>🚦 Rush Hour</span><span class="muted" id="hall-start-total"></span></div>
     <p class="hint" style="margin-top:0;margin-bottom:8px">Commuters that start every time your Mac does. <b>Neighbourhood Watch</b> flags ones that look wrong.</p>
     <div id="hall-start"></div>
     <button class="ghost wide" id="hall-login">${IS_WIN ? 'Open Startup apps (Windows Settings)' : 'Open at Login apps (System Settings)'}</button>
-    <p class="hint">Everything goes to the Trash, so you can put it back. Neighbourhood Watch is a quick check, not an antivirus.</p>`;
+    <p class="hint">${IS_WIN ? 'Leftover files and startup shortcuts go to the Recycle Bin. Startup apps switched off here can be switched back on in Task Manager.' : 'Everything goes to the Trash, so you can put it back.'} Neighbourhood Watch is a quick check, not an antivirus.</p>`;
   body.appendChild(page);
 
   let apps = null;
@@ -154,7 +154,7 @@ export function initCityHall({ api, fmt, esc, toast, pro, DEMO }) {
       return;
     }
     if (!apps.supported) {
-      el.innerHTML = IS_WIN ? '<div class="empty">Moving Day is Mac-only for now. On Windows, remove apps in Settings › Apps › Installed apps.</div>' : '<div class="empty">Moving Day is for macOS.</div>';
+      el.innerHTML = '<div class="empty">Moving Day is for macOS and Windows.</div>';
       return;
     }
     const list = apps.apps.filter((a) => filter === 'all' || a.unused);
@@ -172,7 +172,7 @@ export function initCityHall({ api, fmt, esc, toast, pro, DEMO }) {
         row.innerHTML = `<button class="move yes">Yes, move ${esc(a.name)} out</button><button class="keep">Keep it</button>`;
         row.querySelector('.keep').onclick = () => renderApps();
         row.querySelector('.yes').onclick = async () => {
-          row.innerHTML = '<button disabled>Packing boxes…</button>';
+          row.innerHTML = `<button disabled>${IS_WIN ? 'Follow the uninstaller window…' : 'Packing boxes…'}</button>`;
           const r = await api.uninstallApp(a.path);
           if (!r.ok) {
             if (r.error === 'cap') pro.showUpgrade('cap', r);
@@ -181,7 +181,7 @@ export function initCityHall({ api, fmt, esc, toast, pro, DEMO }) {
             return;
           }
           apps.apps = apps.apps.filter((x) => x !== a);
-          toast(`${a.name} moved out (${fmt(r.freed || a.total)} to the Trash). Empty the Trash to reclaim the space.`);
+          toast(IS_WIN ? `${a.name} moved out (${fmt(r.freed || a.total)}). Leftovers are in the Recycle Bin.${r.note ? ' ' + r.note : ''}` : `${a.name} moved out (${fmt(r.freed || a.total)} to the Trash). Empty the Trash to reclaim the space.`);
           renderApps();
         };
       };
@@ -196,7 +196,7 @@ export function initCityHall({ api, fmt, esc, toast, pro, DEMO }) {
       return;
     }
     if (!startup.supported) {
-      el.innerHTML = IS_WIN ? '<div class="empty">Rush Hour is Mac-only for now. On Windows, use the Startup apps button below.</div>' : '<div class="empty">Rush Hour is for macOS.</div>';
+      el.innerHTML = '<div class="empty">Rush Hour is for macOS and Windows.</div>';
       return;
     }
     const flagged = startup.items.filter((i) => i.flags.some((f) => WATCH[f] && WATCH[f][2])).length;
@@ -209,12 +209,13 @@ export function initCityHall({ api, fmt, esc, toast, pro, DEMO }) {
       const tags = [
         it.running ? '<span class="tag">running</span>' : '',
         it.scope !== 'you' ? '<span class="tag">all users</span>' : '',
+        it.kind === 'task' ? '<span class="tag">scheduled task</span>' : '',
         ...it.flags.map((f) => (WATCH[f] ? `<span class="tag ${WATCH[f][2] ? 'warn' : ''}" title="${esc(WATCH[f][1])}">${WATCH[f][2] ? '🚨 ' : ''}${esc(WATCH[f][0])}</span>` : '')),
       ].join('');
-      const action = !it.canRemove ? '<button class="ghost show" style="width:auto">Show</button>' : it.freeToRemove || isPro() ? '<button class="off">Switch off</button>' : '<button class="off locked" title="Gigapolis Pro">🔒 Switch off</button>';
+      const action = !it.canRemove ? (it.reveal === '' ? '' : '<button class="ghost show" style="width:auto">Show</button>') : it.freeToRemove || isPro() ? '<button class="off">Switch off</button>' : '<button class="off locked" title="Gigapolis Pro">🔒 Switch off</button>';
       row.innerHTML = `<div class="who"><span class="name" title="${esc(it.label)}">${esc(it.name)}</span><small title="${esc(it.program || '')}">${esc(it.program || it.label)}</small>${tags ? `<div class="tags">${tags}</div>` : ''}</div>${action}`;
       const show = row.querySelector('.show');
-      if (show) show.onclick = () => api.reveal(it.path);
+      if (show) show.onclick = () => api.reveal(it.reveal || it.path);
       const off = row.querySelector('.off');
       if (off)
         off.onclick = async () => {
@@ -227,7 +228,7 @@ export function initCityHall({ api, fmt, esc, toast, pro, DEMO }) {
             return toast(r.error || 'Could not switch it off');
           }
           startup.items = startup.items.filter((x) => x !== it);
-          toast(`${it.name} switched off. Its file is in the Trash if you want it back.`);
+          toast(r.note || `${it.name} switched off. Its file is in the Trash if you want it back.`);
           renderStartup();
         };
       el.appendChild(row);
