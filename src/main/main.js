@@ -17,6 +17,7 @@ const { createTray, fmt } = require('./tray');
 const protection = createProtection();
 const { createDrives, driveMessage } = require('./drives');
 const { createMonitor } = require('./perf');
+const { createMaintenance } = require('./maintenance');
 let drives = createDrives(); // reloaded with the saved opt-ins once userData is known
 const driveBlock = (p) => {
   const c = drives.blocked(p);
@@ -868,3 +869,10 @@ const getMonitor = () =>
 ipcMain.handle('perf:sample', () => getMonitor().sample());
 ipcMain.handle('perf:quit', (_e, key, force) => getMonitor().quit(String(key), !!force));
 app.on('will-quit', () => monitor && monitor.stop());
+
+// --- Public Works: maintenance jobs (DNS, Spotlight, First Aid...) -----------
+// The page sends task ids only; the commands live in maintenance.js.
+let maintenance = null;
+const getMaintenance = () => (maintenance ||= createMaintenance({ dir: app.getPath('userData') }));
+ipcMain.handle('maint:list', () => getMaintenance().list());
+ipcMain.handle('maint:run', (_e, ids) => getMaintenance().run(Array.isArray(ids) ? ids.slice(0, 20).map(String) : []));

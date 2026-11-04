@@ -20,6 +20,7 @@ Click **Scan my files** (scans your home folder) or **Choose folder…** for any
 - **While scanning** the city is a construction site: roads laid, cranes swinging, road crews patching, and each top-level folder's building goes up the moment it has been measured.
 - **Full Disk Access** (macOS): a one-time screen opens the exact System Settings switch so there are no per-folder pop-ups.
 - **Performance** tab (the Power Station): live memory (with macOS memory pressure), processor load and a 2-minute graph, the heaviest apps by memory or processor (helpers grouped under their app), disk traffic, battery and heat. **Quit** asks first, and offers Force quit if the app doesn't close; macOS / Windows system processes never get a Quit button. Samples every 3 s only while the tab is open. Free.
+- **Maintenance** tab (Public Works): one-click housekeeping. Mac: flush DNS, rebuild Launch Services ("Open With" menus), run maintenance scripts, free up memory, First Aid disk check, repair home folder permissions, rebuild Spotlight. Windows: flush DNS, reset the icon cache, open Disk Cleanup, check the disk, optimise the drive, repair system files (SFC). Jobs that need an administrator run together after one password / UAC prompt. Nothing deletes your files. Free.
 - **Safe clean** lists what can go. Everything goes to the Trash / Recycle Bin, never a permanent delete.
 
 ## Browser demo
@@ -59,6 +60,7 @@ Builds come from the **Build Mac app** GitHub Action (run it by hand or push a `
 | Deep Clean: render caches, duplicates, app leftovers, old iPhone backups, dev junk, logs/installers | see what's found | ✓ |
 | Weekly check-up with alert | | ✓ |
 | Performance tab: live memory / processor monitor, quit heavy apps | ✓ | ✓ |
+| Maintenance tab: DNS, Spotlight / icon cache, disk check, system scripts | ✓ | ✓ |
 
 Pro is unlocked with a **Lemon Squeezy licence key** (no account or login). Checkout link, store id (513897) and product id (1496849) live in `src/main/config.js`; env vars `GIGAPOLIS_CHECKOUT_URL` / `GIGAPOLIS_STORE_ID` / `GIGAPOLIS_PRODUCT_ID` override them. The key is checked online on activation and every few days after; Pro keeps working offline for 30 days. The free allowance is enforced in the main process. For development, `GIGAPOLIS_PRO=1 npm start` forces Pro (unpackaged builds only). In the browser demo the key `DEMO-PRO` unlocks Pro.
 

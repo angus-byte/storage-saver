@@ -83,7 +83,8 @@ export function initPrivacy({ api, fmt, esc, toast, pro, DEMO }) {
   tabBtn.className = 'tab';
   tabBtn.dataset.tab = 'privacy';
   tabBtn.textContent = 'Privacy';
-  tabs.appendChild(tabBtn);
+  // Before App Uninstaller, so the tabs split into two rows that both fit.
+  tabs.insertBefore(tabBtn, tabs.querySelector('[data-tab="hall"]') || null);
   const page = document.createElement('section');
   page.id = 'tab-privacy';
   page.className = 'tab-page';
