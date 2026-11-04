@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Notification, nativeImage } = require('electron');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -8,6 +8,7 @@ const { createLicence } = require('./licence');
 const { deepSuggestions, sweepOnly, sizeOf, sameFile } = require('./deepclean');
 const config = require('./config');
 const cityhall = require('./cityhall');
+const photos = require('./photos');
 const browsers = require('./browsers');
 const cityhallWin = require('./cityhall-win');
 const { createProtection, friendlyError } = require('./protect');
@@ -602,6 +603,116 @@ ipcMain.handle('startup:openSettings', () => {
   if (process.platform === 'darwin') shell.openExternal('x-apple.systempreferences:com.apple.LoginItems-Settings.extension');
   else if (WIN) shell.openExternal('ms-settings:startupapps');
   return true;
+});
+
+// --- Photo Studio: duplicate + similar photos ---------------------------------
+// Scans only the home folder on the startup disk (see photos.js for what is
+// skipped). Free plan: trashing photos counts toward the Demolish allowance;
+// Pro: unlimited. Same on macOS and Windows (nativeImage thumbnails use
+// QuickLook / the Windows shell).
+let photoScan = null;
+let lastPhotos = null;
+const photoCacheFile = () => path.join(app.getPath('userData'), 'gigapolis-photos.json');
+function loadPhotoCache() {
+  try {
+    return new Map(Object.entries(JSON.parse(fs.readFileSync(photoCacheFile(), 'utf8'))));
+  } catch {
+    return new Map();
+  }
+}
+async function photoThumb(p, size) {
+  let img = null;
+  if (process.platform === 'darwin' || WIN) {
+    try {
+      img = await nativeImage.createThumbnailFromPath(p, { width: size, height: size });
+    } catch {}
+  }
+  if (!img || img.isEmpty()) {
+    img = nativeImage.createFromPath(p);
+    if (img.isEmpty()) return null;
+    const { width, height } = img.getSize();
+    const k = size / Math.max(width, height);
+    if (k < 1) img = img.resize({ width: Math.max(1, Math.round(width * k)), height: Math.max(1, Math.round(height * k)), quality: 'good' });
+  }
+  return img.isEmpty() ? null : img;
+}
+async function decodePhoto(p) {
+  const img = await photoThumb(p, 64);
+  if (!img) return null;
+  const { width, height } = img.getSize();
+  return { bitmap: img.toBitmap(), w: width, h: height };
+}
+async function photoDims(p) {
+  const img = nativeImage.createFromPath(p);
+  return img.isEmpty() ? null : img.getSize();
+}
+
+ipcMain.handle('photos:scan', async (event) => {
+  if (photoScan) photoScan.abort();
+  const controller = new AbortController();
+  photoScan = controller;
+  const sender = event.sender;
+  const cache = loadPhotoCache();
+  try {
+    const res = await photos.findPhotos({
+      roots: [os.homedir()],
+      signal: controller.signal,
+      decode: decodePhoto,
+      dims: photoDims,
+      cache,
+      onProgress: (p) => {
+        if (!sender.isDestroyed()) sender.send('photos:progress', p);
+      },
+    });
+    try {
+      fs.writeFileSync(photoCacheFile(), JSON.stringify(Object.fromEntries(cache)));
+    } catch {}
+    lastPhotos = res;
+    // Small previews for the groups (capped so the reply stays light).
+    let budget = 800;
+    for (const g of [...res.exact, ...res.similar])
+      for (const it of g.items) {
+        if (budget-- <= 0) break;
+        const t = await photoThumb(it.path, 160).catch(() => null);
+        if (t) it.thumb = 'data:image/jpeg;base64,' + t.toJPEG(72).toString('base64');
+      }
+    return res;
+  } catch (err) {
+    if (controller.signal.aborted) return { cancelled: true };
+    throw err;
+  } finally {
+    if (photoScan === controller) photoScan = null;
+  }
+});
+
+ipcMain.handle('photos:cancel', () => {
+  if (photoScan) photoScan.abort();
+  return true;
+});
+
+// Moves the chosen photos to the Trash / Recycle Bin. Checked again here: each
+// photo must be in a group from the last scan, one photo of every group is
+// kept, and an exact duplicate goes only if it still matches the keeper byte
+// for byte.
+ipcMain.handle('photos:trash', async (_e, paths) => {
+  const { ok, refused } = photos.planTrash(lastPhotos, paths || []);
+  const results = refused.map((r) => ({ ...r, ok: false }));
+  const go = [];
+  for (const item of ok) {
+    if (!fs.existsSync(item.keep)) results.push({ path: item.path, ok: false, error: 'The photo you are keeping has gone. Scan photos again.' });
+    else if (item.kind === 'exact' && !(await sameFile(item.path, item.keep))) results.push({ path: item.path, ok: false, error: 'Not an exact copy any more, left in place' });
+    else go.push(item.path);
+  }
+  if (!go.length) return results;
+  const sizes = await measure(go);
+  const blocked = plan.checkAllowance(sum(sizes, go));
+  if (blocked) return [...results, ...go.map((p) => ({ path: p, ...blocked }))];
+  const done = await trashPaths(go);
+  const gone = new Set(done.filter((r) => r.ok).map((r) => r.path));
+  for (const g of [...lastPhotos.exact, ...lastPhotos.similar]) g.items = g.items.filter((i) => !gone.has(i.path));
+  plan.recordDemolished(sum(sizes, done.filter((r) => r.ok).map((r) => r.path)));
+  pushPlan();
+  return [...results, ...done];
 });
 
 // --- Privacy: browser caches, history, cookies, downloads, site data --------
