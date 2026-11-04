@@ -8,10 +8,22 @@ const { createLicence } = require('./licence');
 const { deepSuggestions, sweepOnly, sizeOf, sameFile } = require('./deepclean');
 const config = require('./config');
 const cityhall = require('./cityhall');
+const cityhallWin = require('./cityhall-win');
 const { createProtection, friendlyError } = require('./protect');
 const { createSettings, lowSpaceCheck } = require('./settings');
 const { createTray, fmt } = require('./tray');
 const protection = createProtection();
+const { createDrives, driveMessage } = require('./drives');
+let drives = createDrives(); // reloaded with the saved opt-ins once userData is known
+const driveBlock = (p) => {
+  const c = drives.blocked(p);
+  return c ? { ok: false, error: 'drive', drive: c, message: driveMessage(c) } : null;
+};
+// Scanning never walks into cloud folders or other drives that aren't opted in.
+const scanSkip = (p) => {
+  const c = drives.blocked(p);
+  return c ? { kind: c.kind, label: c.label } : null;
+};
 
 let win;
 let currentScan = null;
@@ -76,6 +88,7 @@ if (WIN) app.setAppUserModelId('com.sommarfilms.storagesaver');
 
 app.whenReady().then(() => {
   settings = createSettings({ dir: app.getPath('userData') });
+  drives = createDrives({ file: path.join(app.getPath('userData'), 'drives.json') });
   plan = createLicence({ dir: app.getPath('userData'), forcePro: !app.isPackaged && process.env.GIGAPOLIS_PRO === '1' });
   plan.revalidate().then(pushPlan);
   setInterval(() => plan.revalidate().then(pushPlan), 6 * 3600000);
@@ -112,9 +125,9 @@ let safe = { state: 'unknown', bytes: 0, items: [] };
 let lowSpaceArmed = true;
 
 // Safe Clean = caches + Trash, the same two groups as the Safe Clean tab.
-function updateSafe() {
+async function updateSafe() {
   if (!lastTree) return;
-  const s = sweepOnly(suggestions(lastTree));
+  const s = await withRecycleBin(sweepOnly(suggestions(lastTree)));
   const items = ['caches', 'trash'].flatMap((k) => (s[k] ? s[k].items : []));
   safe = { state: 'ready', bytes: items.reduce((n, i) => n + i.size, 0), items };
   if (tray) tray.render();
@@ -160,8 +173,8 @@ async function backgroundScan() {
   const controller = new AbortController();
   currentScan = controller;
   try {
-    lastTree = await scan(defaultRoots()[0], { signal: controller.signal });
-    updateSafe();
+    lastTree = await scan(defaultRoots()[0], { signal: controller.signal, skip: scanSkip });
+    await updateSafe();
   } catch {
     safe = { state: 'unknown', bytes: 0, items: [] };
     if (tray) tray.render();
@@ -247,8 +260,14 @@ ipcMain.handle('scan:start', async (event, root) => {
   currentScan = controller;
   const target = root || defaultRoots()[0];
   const sender = event.sender;
+  const block = driveBlock(target);
+  if (block) {
+    if (currentScan === controller) currentScan = null;
+    return { blocked: block };
+  }
   try {
     const tree = await scan(target, {
+      skip: scanSkip,
       signal: controller.signal,
       onProgress: (p) => {
         if (!sender.isDestroyed()) sender.send('scan:progress', p);
@@ -256,11 +275,22 @@ ipcMain.handle('scan:start', async (event, root) => {
     });
     lastTree = tree;
     updateSafe();
-    return { tree, suggestions: sweepOnly(suggestions(tree)) };
+    return { tree, suggestions: await withRecycleBin(sweepOnly(suggestions(tree))) };
   } finally {
     if (currentScan === controller) currentScan = null;
   }
 });
+
+// Windows keeps the Recycle Bin at the drive root, outside the scanned home
+// folder, so Street Sweep adds it here (the Mac Trash is inside the home).
+async function withRecycleBin(sugg) {
+  if (!WIN || !sugg.trash) return sugg;
+  const bin = await cityhallWin.recycleBin(os.homedir()).catch(() => null);
+  if (bin && bin.size > 0 && !sugg.trash.items.some((i) => i.path.toLowerCase() === bin.path.toLowerCase())) {
+    sugg.trash = { items: [...sugg.trash.items, bin], total: sugg.trash.total + bin.size };
+  }
+  return sugg;
+}
 
 // macOS "Full Disk Access": one switch in System Settings that covers every
 // folder, so the app never has to ask per folder. Reading the TCC database
@@ -295,6 +325,11 @@ ipcMain.handle('fs:reveal', (_e, p) => {
   return true;
 });
 
+// Cloud folders and other drives: off by default, opted in one by one.
+ipcMain.handle('drives:list', () => drives.available());
+ipcMain.handle('drives:add', (_e, root) => drives.add(root));
+ipcMain.handle('drives:remove', (_e, root) => drives.remove(root));
+
 ipcMain.handle('fs:pickFolder', async () => {
   const res = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
   return res.canceled ? null : res.filePaths[0];
@@ -316,6 +351,8 @@ ipcMain.handle('fs:trash', async (_e, paths) => {
   // Never trash a top-level user or system folder (e.g. ~/Pictures, /Applications).
   const guarded = paths.map((p) => [p, protection.check(p)]).filter(([, r]) => r);
   if (guarded.length) return guarded.map(([p, r]) => ({ path: p, ok: false, error: 'protected', name: r.name, contents: r.contents }));
+  const offDrive = paths.map((p) => [p, driveBlock(p)]).find(([, b]) => b);
+  if (offDrive) return paths.map((p) => ({ path: p, ...offDrive[1] }));
   const sizes = await measure(paths);
   const blocked = plan.checkAllowance(sum(sizes, paths));
   if (blocked) return paths.map((p) => ({ path: p, ...blocked }));
@@ -343,6 +380,11 @@ async function trashPaths(paths) {
         results.push({ path: p, ok: false, error: 'protected' });
         continue;
       }
+      const block = driveBlock(p);
+      if (block) {
+        results.push({ path: p, ...block });
+        continue;
+      }
       if (!fs.existsSync(p)) {
         results.push({ path: p, ok: false, error: 'missing' });
         continue;
@@ -359,8 +401,12 @@ async function trashPaths(paths) {
 // Empties the contents of a folder (e.g. a cache dir) into the Trash, keeping the folder itself.
 ipcMain.handle('fs:emptyFolder', (_e, dir) => emptyFolder(dir));
 async function emptyFolder(dir) {
+  // Emptying the Recycle Bin is the one permanent delete: the person already deleted these.
+  if (WIN && /[\\/]\$Recycle\.Bin([\\/]|$)/i.test(dir)) return [{ path: dir, ok: await cityhallWin.emptyRecycleBin(dir) }];
   const guard = protection.check(dir);
   if (guard && !guard.contents) return [{ path: dir, ok: false, error: 'protected', name: guard.name, contents: false }];
+  const block = driveBlock(dir);
+  if (block) return [{ path: dir, ...block }];
   let entries;
   try {
     entries = await fsp.readdir(dir);
@@ -376,6 +422,7 @@ async function emptyFolder(dir) {
   const results = [];
   for (const p of paths) {
     try {
+      if (driveBlock(p)) throw new Error('Cloud or other drive not added');
       await shell.trashItem(p);
       results.push({ path: p, ok: true });
     } catch (err) {
@@ -420,8 +467,11 @@ ipcMain.handle('plan:setWeekly', (_e, enabled) => {
 // so they know what Pro would clear, but only Pro gets the checkboxes.
 ipcMain.handle('deep:scan', async () => {
   if (!lastTree) return null;
-  return deepSuggestions(lastTree);
+  return deepSuggestions(lastTree, deepOpts());
 });
+
+// Windows: Deep Clean's leftover check needs the installed apps from the registry.
+const deepOpts = () => (WIN ? { listApps: () => cityhallWin.appNames() } : {});
 
 // --- Weekly check-up (Pro) ----------------------------------------------------
 // While Gigapolis is running (it starts hidden at login when this is on),
@@ -440,11 +490,11 @@ async function weeklyCheckup() {
   if (Date.now() - (st.weekly.lastRun || 0) < config.weeklyMs) return;
   plan.setWeekly({ lastRun: Date.now() });
   try {
-    const tree = await scan(defaultRoots()[0], {});
+    const tree = await scan(defaultRoots()[0], { skip: scanSkip });
     lastTree = tree;
     updateSafe();
-    const sweep = sweepOnly(suggestions(tree));
-    const deep = await deepSuggestions(tree);
+    const sweep = await withRecycleBin(sweepOnly(suggestions(tree)));
+    const deep = await deepSuggestions(tree, deepOpts());
     const bytes = [...Object.values(sweep), ...Object.values(deep)].reduce((n, g) => n + g.total, 0);
     plan.setWeekly({ lastRun: Date.now(), lastFound: bytes });
     pushPlan();
@@ -463,10 +513,15 @@ function startWeeklyCheckup() {
 }
 
 // --- City Hall: Moving Day (apps) + Rush Hour (startup items) ---------------
+// Same tab on both platforms. Mac: apps + their ~/Library boxes go to the
+// Trash. Windows: the app's own uninstaller runs, then its AppData /
+// ProgramData boxes go to the Recycle Bin (src/main/cityhall-win.js).
+const CITY = ['darwin', 'win32'].includes(process.platform);
 let appsCache = null;
+const listAppsNow = () => (WIN ? cityhallWin.listApps(os.homedir()) : cityhall.listApps(os.homedir()));
 ipcMain.handle('apps:list', async (_e, fresh) => {
-  if (process.platform !== 'darwin') return { supported: false, apps: [] };
-  if (!appsCache || fresh) appsCache = cityhall.listApps(os.homedir());
+  if (!CITY) return { supported: false, apps: [] };
+  if (!appsCache || fresh) appsCache = listAppsNow();
   try {
     return { supported: true, apps: await appsCache };
   } catch (err) {
@@ -475,13 +530,14 @@ ipcMain.handle('apps:list', async (_e, fresh) => {
   }
 });
 
-// Moves an app and all of its ~/Library files to the Trash. The file list is
-// worked out again here rather than trusted from the page. Counts towards the
-// free Demolish allowance like any other demolish.
+// Moves an app and all of its files to the Trash. The file list is worked out
+// again here rather than trusted from the page. Counts towards the free
+// Demolish allowance like any other demolish.
 ipcMain.handle('apps:uninstall', async (_e, appPath) => {
-  const apps = await (appsCache || cityhall.listApps(os.homedir()));
+  const apps = await (appsCache || listAppsNow());
   const app = apps.find((a) => a.path === appPath);
   if (!app) return { ok: false, error: 'App not found. Rescan City Hall.' };
+  if (WIN) return uninstallWin(app, apps);
   if (await cityhall.isRunning(app.path)) return { ok: false, error: `Quit ${app.name} first, then move it out.` };
   const files = await cityhall.appFiles(app, os.homedir());
   const paths = [app.path, ...files.map((f) => f.path)];
@@ -497,21 +553,46 @@ ipcMain.handle('apps:uninstall', async (_e, appPath) => {
   return { ok: true, freed: sum(sizes, results.filter((r) => r.ok).map((r) => r.path)), results };
 });
 
+async function uninstallWin(app, apps) {
+  if (await cityhallWin.isRunning(app)) return { ok: false, error: `Close ${app.name} first, then move it out.` };
+  const home = os.homedir();
+  const before = await cityhallWin.appFiles(app, home, { others: apps });
+  const blocked = plan.checkAllowance(app.size + before.reduce((n, f) => n + f.size, 0));
+  if (blocked) return { ok: false, ...blocked };
+  appsCache = null;
+  const gone = await cityhallWin.runUninstaller(app);
+  if (!gone) return { ok: false, error: `${app.name} is still installed. The uninstaller was cancelled or needs finishing.` };
+  // Boxes the uninstaller left behind, plus the install folder if it is still there.
+  const left = await cityhallWin.appFiles(app, home, { others: apps.filter((a) => a !== app) });
+  const paths = left.map((f) => f.path).filter((p) => !protection.isProtected(p));
+  if (app.installLocation && fs.existsSync(app.installLocation) && !protection.isProtected(app.installLocation)) paths.push(app.installLocation);
+  const sizes = await measure(paths);
+  const results = paths.length ? await trashPaths(paths) : [];
+  const freed = app.size + sum(sizes, results.filter((r) => r.ok && r.path !== app.installLocation).map((r) => r.path));
+  plan.recordDemolished(freed);
+  pushPlan();
+  const failed = results.filter((r) => !r.ok).length;
+  return { ok: true, freed, results, uninstalled: true, note: failed ? `${failed} leftover folder${failed > 1 ? 's' : ''} need an admin to remove.` : '' };
+}
+
 ipcMain.handle('startup:list', async () => {
-  if (process.platform !== 'darwin') return { supported: false, items: [] };
-  return { supported: true, items: await cityhall.listStartup(os.homedir()) };
+  if (!CITY) return { supported: false, items: [] };
+  return { supported: true, items: WIN ? await cityhallWin.listStartup() : await cityhall.listStartup(os.homedir()) };
 });
 
-// Switch off a commuter: unload it and move its plist to the Trash (so it can
-// be put back). Only your own LaunchAgents; system ones need an admin. Free
-// plan: only ones Neighbourhood Watch flagged.
+// Switch off a commuter. Mac: unload it and move its plist to the Trash (so it
+// can be put back). Windows: Run-key items are switched off like Task Manager
+// does (switch back on there); Startup-folder shortcuts go to the Recycle Bin.
+// Only your own; ones for every user need an admin. Free plan: only ones
+// Neighbourhood Watch flagged.
 ipcMain.handle('startup:remove', async (_e, file) => {
-  const items = await cityhall.listStartup(os.homedir());
+  const items = WIN ? await cityhallWin.listStartup() : await cityhall.listStartup(os.homedir());
   const item = items.find((i) => i.path === file);
   if (!item) return { ok: false, error: 'Not found any more.' };
-  if (!item.canRemove) return { ok: false, error: 'This one is for every user. Remove it in Finder with your password.' };
+  if (!item.canRemove) return { ok: false, error: WIN ? 'This one is for every user. Switch it off in Task Manager › Startup apps.' : 'This one is for every user. Remove it in Finder with your password.' };
   if (!item.freeToRemove && !plan.isPro()) return { ok: false, error: 'pro' };
-  await cityhall.unloadAgent(file);
+  if (WIN && item.kind === 'run') return (await cityhallWin.disableRun(item)) ? { ok: true, note: `${item.name} switched off. Switch it back on in Task Manager › Startup apps.` } : { ok: false, error: 'Windows would not switch it off.' };
+  if (!WIN) await cityhall.unloadAgent(file);
   const [res] = await trashPaths([file]);
   return res.ok ? { ok: true } : { ok: false, error: res.error };
 });

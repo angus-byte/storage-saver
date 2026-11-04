@@ -7,6 +7,7 @@ import { mockTree, mockSuggestions, mockDisk } from './mock.js';
 import { initPro, demoPlanApi, mockDeep } from './pro.js';
 import { initSeasons } from './seasons.js';
 import { localizeDom } from './platform.js';
+import { initDrives } from './drives.js';
 
 localizeDom();
 
@@ -101,6 +102,7 @@ const MAX_H = 85;
 const state = { disk: null, tree: null, city: [], open: null, suggestions: null, deep: null, selected: new Map(), scanning: false };
 let pro = null; // free / Pro plan UI, see pro.js
 let seasons = null; // Pro autumn / winter, see seasons.js
+let drives = null; // cloud / other drives window, see drives.js
 let night = false; // target state
 let nightK = 0; // 0 = full day, 1 = full night; eased towards the target each frame
 const clock = new THREE.Clock();
@@ -3041,6 +3043,7 @@ async function clearContents(item) {
   await runScan(state.tree ? state.tree.path : null);
 }
 function trashError(r) {
+  if (r.error === 'drive') return toast(r.message);
   if (r.error === 'protected') return toast(`${r.name || 'That folder'} is a macOS system folder and has to stay.`);
   toast('Could not move to Trash: ' + (r.error || 'unknown error'));
   if (r.perm && api.openPermissions) setTimeout(() => api.openPermissions(), 1200);
@@ -3138,7 +3141,10 @@ function fileList(items, top) {
       const act = e.target.closest('[data-act]');
       if (!act) return;
       if (act.dataset.act === 'reveal') api.reveal(it.path);
-      else if (act.dataset.act === 'demolish') actions.innerHTML = `<button data-act="confirm" class="demolish">Yes, demolish ${fmt(it.size)}</button><button data-act="keep">Keep it</button>`;
+      else if (act.dataset.act === 'demolish') {
+        const cloud = drives.cloudOf(it.path);
+        actions.innerHTML = (cloud ? `<span class="muted">⚠️ This is in ${esc(cloud.label)}: it will be deleted online and on every synced device.</span>` : '') + `<button data-act="confirm" class="demolish">Yes, demolish ${fmt(it.size)}${cloud ? ' everywhere' : ''}</button><button data-act="keep">Keep it</button>`;
+      }
       else if (act.dataset.act === 'clear') actions.innerHTML = `<button data-act="confirm-clear" class="demolish">Yes, move everything inside ${esc(it.name)} to Trash (${fmt(it.size)})</button><button data-act="keep">Keep it</button>`;
       else if (act.dataset.act === 'confirm-clear') await clearContents(it);
       else if (act.dataset.act === 'keep') showActions();
@@ -3356,8 +3362,18 @@ async function runScan(root) {
     setScanProgress(p, pct === null ? null : pct / 100);
   });
   try {
-    const { tree, suggestions } = await api.scan(root || undefined);
+    const result = await api.scan(root || undefined);
+    if (result.blocked) {
+      toast(result.blocked.message);
+      drives.open();
+      return;
+    }
+    const { tree, suggestions } = result;
     state.tree = tree;
+    if (tree.skipped && tree.skipped.length) {
+      const names = [...new Set(tree.skipped.map((s) => s.label))];
+      setTimeout(() => toast(`Left out ${names.slice(0, 3).join(', ')}${names.length > 3 ? '…' : ''} so nothing synced gets deleted. Add drives with the drive button.`), 400);
+    }
     state.suggestions = suggestions;
     state.open = null;
     state.disk = await api.diskInfo();
@@ -3434,6 +3450,7 @@ api.diskInfo().then((d) => {
   renderDisk();
 });
 initCityHall({ api, fmt, esc, toast, pro, DEMO });
+drives = initDrives({ api, esc, toast, runScan, DEMO });
 if (DEMO) {
   $('btn-scan').querySelector('span').textContent = 'Scan (demo data)';
   runScan(null);
