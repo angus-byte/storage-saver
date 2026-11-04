@@ -38,9 +38,7 @@ header.nav{display:flex;align-items:center;justify-content:space-between;padding
 .cta{display:flex;flex-wrap:wrap;gap:12px;justify-content:center}
 .small{font-size:14px;color:var(--muted);margin-top:14px}
 .shot{margin:44px auto 0;border-radius:18px;overflow:hidden;box-shadow:0 30px 70px rgba(43,29,22,.25),0 0 0 1px var(--line)}
-.toggle{display:inline-flex;margin-top:18px;background:var(--cream-2);border-radius:999px;padding:4px}
-.toggle button{border:0;background:none;padding:7px 16px;border-radius:999px;font:inherit;font-size:14px;cursor:pointer;color:var(--muted)}
-.toggle button[aria-pressed=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+video{max-width:100%;height:auto;display:block;background:#5cc4c0}
 section{padding:72px 0}
 h2{font-size:clamp(28px,4vw,40px);margin:0 0 12px;letter-spacing:-.01em}
 .sub{color:var(--muted);margin:0 0 36px;max-width:620px}
@@ -97,11 +95,10 @@ footer a{color:var(--muted)}
     </div>
     <p class="small"><span id="dl-ver">Free</span> · macOS, Apple Silicon · <a id="dl-alt" href="https://github.com/angus-byte/storage-saver/releases/latest">Intel Mac version</a></p>
 
-    <div class="toggle" role="group" aria-label="Time of day">
-      <button type="button" aria-pressed="true" data-shot="img/ui-day.jpg">Day</button>
-      <button type="button" aria-pressed="false" data-shot="img/ui-night.jpg">Night</button>
-    </div>
-    <div class="shot"><img id="hero-shot" src="img/ui-day.jpg" width="1440" height="900" alt="Gigapolis showing a Mac's storage as a 3D city with buildings for Movies, Photos, Downloads and Apps"></div>
+    <div class="shot"><video id="hero-video" autoplay muted loop playsinline preload="auto" poster="img/hero-poster.jpg" width="1280" height="800" aria-label="Gigapolis demo: clicking buildings in the 3D storage city, switching to night and orbiting around">
+      <source src="img/hero.mp4" type="video/mp4">
+      <img src="img/ui-day.jpg" width="1440" height="900" alt="Gigapolis showing a Mac's storage as a 3D city">
+    </video></div>
   </div>
 </div>
 
@@ -148,9 +145,9 @@ footer a{color:var(--muted)}
         <a class="btn btn-ghost" href="https://github.com/angus-byte/storage-saver/releases/latest" data-dl>Download free</a>
       </div>
       <div class="plan pro">
-        <span class="tag">ONE-TIME</span>
+        <span class="tag">LIFETIME</span>
         <h3>Pro</h3>
-        <div class="price">$19.99 <small>once</small></div>
+        <div class="price">$19.99 <small>lifetime</small></div>
         <ul>
           <li>Everything in Free</li>
           <li>Unlimited cleanup, no 20 GB cap</li>
@@ -172,7 +169,7 @@ footer a{color:var(--muted)}
     <details><summary>Is it safe?</summary><p>Yes. Gigapolis moves files to the Trash rather than deleting them, and it refuses to touch system folders or your top-level user folders.</p></details>
     <details><summary>Which Macs does it run on?</summary><p>Any Mac on a recent version of macOS. There are separate downloads for Apple Silicon (M1 and later) and Intel.</p></details>
     <details><summary>Why does it ask for Full Disk Access?</summary><p>So it can measure everything on your disk, including Mail and Photos. Your files never leave your Mac.</p></details>
-    <details><summary>Is Pro a subscription?</summary><p>No. $19.99 once, and you keep Pro including future updates.</p></details>
+    <details><summary>Is Pro a subscription?</summary><p>No. $19.99 for a lifetime licence, and you keep Pro including future updates.</p></details>
   </div>
 </section>
 
@@ -183,13 +180,10 @@ footer a{color:var(--muted)}
 <script>
 document.getElementById('yr').textContent = new Date().getFullYear();
 
-// Day/night screenshot toggle
-document.querySelectorAll('[data-shot]').forEach(function (b) {
-  b.addEventListener('click', function () {
-    document.getElementById('hero-shot').src = b.dataset.shot;
-    document.querySelectorAll('[data-shot]').forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); });
-  });
-});
+// Respect reduced motion: show the poster frame instead of playing.
+if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  var v = document.getElementById('hero-video'); v.removeAttribute('autoplay'); v.pause();
+}
 
 // Point download buttons at the latest release's .dmg files.
 // Falls back to the releases page if the API is unreachable.
