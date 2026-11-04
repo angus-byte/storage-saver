@@ -117,7 +117,7 @@ const NIGHT_SECONDS = 4.5;
 // clock; cars, people and everything else keep their normal speed. Clicking
 // the Day / Night button stops the cycle and stays in that mode.
 const CYCLE_SECONDS = 120;
-const SUN_SWING = 0.6; // radians the sun / moon travel round the sky across the day / night
+const SUN_SWING = 0.4; // radians the sun / moon travel round the sky across the day / night
 let autoCycle = true;
 let cycleP = 0.04; // 0..1 through the day; starts just after sunrise
 let sunAngle = 0;
@@ -170,7 +170,7 @@ key.shadow.camera.bottom = -140;
 key.shadow.camera.far = 500;
 key.shadow.bias = -0.0002;
 key.shadow.radius = 1.5; // crisp daytime shadows (softened at night in applyNight)
-key.shadow.blurSamples = 12;
+key.shadow.blurSamples = 16;
 scene.add(key);
 const fill = new THREE.DirectionalLight(0x9fd8e8, 0.12);
 fill.position.set(-120, 60, -90);
@@ -767,7 +767,7 @@ function applyNight() {
   hemi.intensity = 0.4 + (0.35 - 0.4) * k;
   fill.intensity = 0.12 + (0.15 - 0.12) * k;
   // Softer shadow edges while the sun is moving, so they glide rather than shimmer.
-  key.shadow.radius = (autoCycle ? 4 : 1.5) + 4.5 * k;
+  key.shadow.radius = (autoCycle ? 6 : 1.5) + 4.5 * k;
   renderer.toneMappingExposure = 0.98 + (0.95 - 0.98) * k;
   scene.environment = k < 0.5 ? envDay : envNight;
   scene.environmentIntensity = k < 0.5 ? 0.28 * (1 - k * 1.4) : 0.3 * (k - 0.3);
