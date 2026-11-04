@@ -58,7 +58,7 @@ const STATUS = {
   warn: ['Grid under strain', 'Memory is getting tight, so things may slow down. Quitting a heavy business helps.'],
   critical: ['Brownout', 'Memory is nearly gone and your Mac is swapping to disk. Quit something heavy below.'],
 };
-const HEAT = { nominal: ['Cool', 'Running normally'], fair: ['Warm', 'Fans may spin up'], serious: ['Hot', 'Slowing down to cool off'], critical: ['Overheating', 'Heavily throttled'] };
+const HEAT = { nominal: ['Cool', 'normal'], fair: ['Warm', 'fans may spin'], serious: ['Hot', 'slowing down'], critical: ['Overheating', 'throttled'] };
 const HISTORY = 40; // 40 × 3 s = 2 minutes
 
 // Demo: a believable machine that wiggles, so the tab can be tried in a browser.
@@ -329,7 +329,7 @@ export function initPerformance({ api, fmt, esc, toast, DEMO }) {
       el.querySelector('.val').textContent = val;
       el.querySelector('.sub').textContent = sub || ' ';
     };
-    if (s.disk) set('#ps-disk', `↓ ${rate(s.disk.read)}`, `↑ ${rate(s.disk.write)} written`);
+    if (s.disk) set('#ps-disk', `↓ ${rate(s.disk.read)}`, `↑ ${rate(s.disk.write)}`);
     else set('#ps-disk', s.diskSupported ? '…' : 'n/a', s.diskSupported ? 'measuring' : 'not reported');
     const b = s.battery;
     if (b) set('#ps-bat', `${b.percent}%`, b.charging ? 'charging' : b.onAC ? 'plugged in' : b.minutesLeft ? `${Math.floor(b.minutesLeft / 60)}h ${b.minutesLeft % 60}m left` : 'on battery');
