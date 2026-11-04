@@ -114,7 +114,7 @@ export function initCityHall({ api, fmt, esc, toast, pro, DEMO }) {
   const tabBtn = document.createElement('button');
   tabBtn.className = 'tab';
   tabBtn.dataset.tab = 'hall';
-  tabBtn.textContent = 'City Hall';
+  tabBtn.textContent = 'App Uninstaller';
   tabs.appendChild(tabBtn);
   const page = document.createElement('section');
   page.id = 'tab-hall';

@@ -538,7 +538,7 @@ ipcMain.handle('apps:list', async (_e, fresh) => {
 ipcMain.handle('apps:uninstall', async (_e, appPath) => {
   const apps = await (appsCache || listAppsNow());
   const app = apps.find((a) => a.path === appPath);
-  if (!app) return { ok: false, error: 'App not found. Rescan City Hall.' };
+  if (!app) return { ok: false, error: 'App not found. Reopen App Uninstaller to rescan.' };
   if (WIN) return uninstallWin(app, apps);
   if (await cityhall.isRunning(app.path)) return { ok: false, error: `Quit ${app.name} first, then move it out.` };
   const files = await cityhall.appFiles(app, os.homedir());
