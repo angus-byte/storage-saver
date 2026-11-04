@@ -31,7 +31,43 @@ const good = (endpoint) =>
       ? { valid: true, meta: { store_id: 1, product_id: 2 } }
       : { deactivated: true };
 
-test('free plan caps total demolish at 20 GB and persists usage', () => {
+test('free allowance resets each calendar month and resists clock and file tricks', () => {
+  const dir = tmp();
+  let t = new Date(2026, 10, 20, 12).getTime(); // 20 Nov
+  const lic = createLicence({ dir, cfg, now: () => t, machineId: () => 'm1' });
+  lic.recordDemolished(18 * GB);
+  assert.equal(lic.status().remainingBytes, 2 * GB);
+  assert.equal(lic.status().resetsAt, new Date(2026, 11, 1).getTime());
+  assert.equal(lic.checkAllowance(3 * GB).resetsAt, new Date(2026, 11, 1).getTime());
+  t = new Date(2026, 11, 1, 0, 5).getTime(); // 1 Dec: fresh 20 GB
+  assert.equal(lic.status().remainingBytes, 20 * GB);
+  lic.recordDemolished(20 * GB);
+  t = new Date(2026, 10, 25).getTime(); // clock wound back to November
+  assert.equal(lic.status().remainingBytes, 0);
+  assert.equal(createLicence({ dir, cfg, now: () => t, machineId: () => 'm1' }).status().remainingBytes, 0);
+  // Hand-editing the usage breaks the signature: month counts as used up.
+  t = new Date(2026, 11, 10).getTime();
+  const f = path.join(dir, 'gigapolis-plan.json');
+  const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+  j.allowance.used = 0;
+  fs.writeFileSync(f, JSON.stringify(j));
+  const edited = createLicence({ dir, cfg, now: () => t, machineId: () => 'm1' });
+  assert.equal(edited.status().remainingBytes, 0);
+  t = new Date(2027, 0, 1, 9).getTime();
+  assert.equal(edited.status().remainingBytes, 20 * GB);
+});
+
+test('old lifetime counter carries into the current month', () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'gigapolis-plan.json'), JSON.stringify({ demolishedBytes: 12 * GB }));
+  let t = new Date(2026, 10, 4).getTime();
+  const lic = createLicence({ dir, cfg, now: () => t });
+  assert.equal(lic.status().remainingBytes, 8 * GB);
+  t = new Date(2026, 11, 2).getTime();
+  assert.equal(lic.status().remainingBytes, 20 * GB);
+});
+
+test('free plan caps demolish at 20 GB a month and persists usage', () => {
   const dir = tmp();
   const lic = createLicence({ dir, cfg, fetchImpl: fakeFetch(good) });
   assert.equal(lic.status().plan, 'free');

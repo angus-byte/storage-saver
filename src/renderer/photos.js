@@ -214,7 +214,7 @@ export function initPhotos({ api, fmt, esc, toast, pro, DEMO }) {
     bar.className = 'ph-bar';
     const n = marked.size;
     const st = pro.status && pro.status();
-    const capNote = st && st.plan === 'free' && n ? ` Counts toward your free ${fmt(st.capBytes)} (${fmt(st.remainingBytes)} left).` : '';
+    const capNote = st && st.plan === 'free' && n ? ` Counts toward your free ${fmt(st.capBytes)} a month (${fmt(st.remainingBytes)} left).` : '';
     bar.innerHTML = `<button class="danger" id="ph-trash" ${n ? '' : 'disabled'} style="width:100%">${n ? `Move ${n} photo${n === 1 ? '' : 's'} to Trash · ${fmt(markedBytes())}` : 'Click photos to mark them for the Trash'}</button>
       <p class="hint">★ is the suggested keeper. Twins are checked byte for byte again before anything moves. Everything goes to the Trash, so you can get it back.${capNote}</p>
       <button class="link" id="ph-rescan">Scan photos again</button>`;

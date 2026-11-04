@@ -11,7 +11,7 @@ const API = 'https://api.lemonsqueezy.com/v1/licenses/';
 
 function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now(), forcePro = false, cfg = config, machineId = () => 'unknown' }) {
   const file = path.join(dir, 'gigapolis-plan.json');
-  let data = { licence: null, demolishedBytes: 0, weekly: { enabled: true, lastRun: 0 } };
+  let data = { licence: null, allowance: null, weekly: { enabled: true, lastRun: 0 } };
   try {
     data = { ...data, ...JSON.parse(fs.readFileSync(file, 'utf8')) };
   } catch {}
@@ -62,14 +62,56 @@ function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now
     return age >= -3600000 && age < cfg.offlineGraceMs;
   }
 
+  // --- Free Demolish allowance: 20 GB per calendar month -------------------
+  // Stored as { month: 'YYYY-MM', used, seen, sig }. `seen` is the latest
+  // clock reading so far, so winding the clock back can't reopen an old month
+  // and a later reset only happens once the clock really is in a new month.
+  // `sig` is an HMAC tied to this computer, so a hand-edited or copied file
+  // counts as a used-up month (it still resets on the 1st, like normal).
+  const monthOf = (t) => {
+    const d = new Date(t);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  };
+  const sign = (a) => crypto.createHmac('sha256', 'gigapolis-allowance:' + here).update(`${a.month}|${a.used}|${a.seen}`).digest('hex').slice(0, 32);
+  function allowance() {
+    const t = now();
+    let a = data.allowance;
+    if (!a || typeof a.month !== 'string' || !Number.isFinite(a.used) || !Number.isFinite(a.seen) || a.sig !== sign(a)) {
+      // Upgrading from the old lifetime counter: carry it into this month.
+      // A missing / tampered record (with an old counter or a signature
+      // present) starts the month used up; a brand new install starts fresh.
+      const legacy = data.demolishedBytes;
+      const used = a ? cfg.freeCapBytes : Number.isFinite(legacy) ? Math.min(legacy, cfg.freeCapBytes) : 0;
+      a = { month: monthOf(t), used, seen: t };
+      delete data.demolishedBytes;
+      data.allowance = { ...a, sig: sign(a) };
+      save();
+      return a;
+    }
+    // Clock behind the latest reading: keep the month we were in.
+    if (t < a.seen) return a;
+    const m = monthOf(t);
+    const next = m > a.month ? { month: m, used: 0, seen: t } : { ...a, seen: t };
+    if (next.month !== a.month || t - a.seen > 3600000) {
+      data.allowance = { ...next, sig: sign(next) };
+      save();
+    }
+    return next;
+  }
+  function resetsAt(month) {
+    const [y, mo] = month.split('-').map(Number);
+    return new Date(y, mo, 1).getTime(); // 1st of the following month, local time
+  }
+
   function status() {
     const pro = isPro();
-    const used = data.demolishedBytes || 0;
+    const a = allowance();
     return {
       plan: pro ? 'pro' : 'free',
       capBytes: pro ? null : cfg.freeCapBytes,
-      usedBytes: used,
-      remainingBytes: pro ? null : Math.max(0, cfg.freeCapBytes - used),
+      usedBytes: a.used,
+      remainingBytes: pro ? null : Math.max(0, cfg.freeCapBytes - a.used),
+      resetsAt: pro ? null : resetsAt(a.month),
       email: data.licence && data.licence.email,
       keyHint: ownerOk ? 'Owner key' : data.licence ? '…' + data.licence.key.slice(-6) : null,
       // Seats: "used on 2 of 3 computers" (null when unknown / owner key).
@@ -186,17 +228,19 @@ function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now
     return { ok: true, status: status() };
   }
 
-  // --- Free Demolish allowance --------------------------------------------
   /** null when allowed, otherwise a 'cap' error object for the UI. */
   function checkAllowance(bytes) {
     if (isPro() || bytes <= 0) return null;
-    const remaining = Math.max(0, cfg.freeCapBytes - (data.demolishedBytes || 0));
+    const a = allowance();
+    const remaining = Math.max(0, cfg.freeCapBytes - a.used);
     if (bytes <= remaining) return null;
-    return { ok: false, error: 'cap', needBytes: bytes, remainingBytes: remaining, capBytes: cfg.freeCapBytes };
+    return { ok: false, error: 'cap', needBytes: bytes, remainingBytes: remaining, capBytes: cfg.freeCapBytes, resetsAt: resetsAt(a.month) };
   }
   function recordDemolished(bytes) {
     if (bytes <= 0) return;
-    data.demolishedBytes = (data.demolishedBytes || 0) + bytes;
+    const a = allowance();
+    const next = { month: a.month, used: a.used + bytes, seen: Math.max(a.seen, now()) };
+    data.allowance = { ...next, sig: sign(next) };
     save();
   }
 
