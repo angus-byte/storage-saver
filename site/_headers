@@ -5,3 +5,7 @@
 
 /img/*
   Cache-Control: public, max-age=3600
+
+/stats*
+  X-Robots-Tag: noindex
+  Cache-Control: no-store
