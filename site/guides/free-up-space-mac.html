@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to Free Up Disk Space on a Mac (2026 Guide) · Gigapolis</title>
+<meta name="description" content="See what's using storage on your Mac, then free up disk space safely: caches, System Data, large files, old downloads, apps and duplicate photos.">
+<link rel="canonical" href="https://getgigapolis.com/guides/free-up-space-mac">
+<link rel="icon" href="/img/icon.png">
+<meta name="theme-color" content="#b9583c">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Gigapolis">
+<meta property="og:url" content="https://getgigapolis.com/guides/free-up-space-mac">
+<meta property="og:title" content="How to free up disk space on a Mac">
+<meta property="og:description" content="See what's using storage on your Mac, then free up disk space safely: caches, System Data, large files, old downloads, apps and duplicate photos.">
+<meta property="og:image" content="https://getgigapolis.com/img/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@graph": [{"@type": "Article", "headline": "How to free up disk space on a Mac", "description": "See what's using storage on your Mac, then free up disk space safely: caches, System Data, large files, old downloads, apps and duplicate photos.", "datePublished": "2026-11-04", "dateModified": "2026-11-04", "mainEntityOfPage": "https://getgigapolis.com/guides/free-up-space-mac", "image": "https://getgigapolis.com/img/og.jpg", "author": {"@type": "Organization", "name": "Gigapolis", "url": "https://getgigapolis.com/"}, "publisher": {"@type": "Organization", "name": "Gigapolis", "logo": {"@type": "ImageObject", "url": "https://getgigapolis.com/img/icon.png"}}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://getgigapolis.com/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://getgigapolis.com/guides/free-up-space-mac"}, {"@type": "ListItem", "position": 3, "name": "How to free up disk space on a Mac", "item": "https://getgigapolis.com/guides/free-up-space-mac"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How much free space should a Mac have?", "acceptedAnswer": {"@type": "Answer", "text": "Aim to keep at least 10–15% of your disk free, or around 20 GB on smaller drives. macOS needs room for updates, swap files and caches, and gets slow when the disk is nearly full."}}, {"@type": "Question", "name": "Is it safe to delete System Data on a Mac?", "acceptedAnswer": {"@type": "Answer", "text": "Not all of it. Caches, old logs and local Time Machine snapshots are safe to remove. Core macOS files are not, and you can't delete them anyway without turning off system protection."}}]}]}
+</script>
+<style>
+:root{--cream:#f6efe3;--cream-2:#eadfcb;--rust:#b9583c;--ink:#2b1d16;--muted:#6e5a4c;--card:#fffaf2;--line:rgba(43,29,22,.12)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--cream);color:var(--ink);font:17px/1.65 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--rust)}
+img{max-width:100%;height:auto;display:block}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+header.nav{display:flex;align-items:center;justify-content:space-between;padding:18px 0}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:20px;text-decoration:none;color:var(--ink)}
+.brand img{width:36px;height:36px;border-radius:9px}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 20px;border-radius:12px;font-weight:600;text-decoration:none;font-size:16px}
+.btn-primary{background:var(--rust);color:#fff;box-shadow:0 6px 18px rgba(185,88,60,.35)}
+.btn-dark{background:var(--ink);color:#fff}
+article{max-width:740px;margin:0 auto;padding:10px 0 40px}
+.crumbs{font-size:14px;color:var(--muted);margin:10px 0 0}.crumbs a{color:var(--muted)}
+h1{font-size:clamp(30px,5vw,44px);line-height:1.12;letter-spacing:-.02em;margin:14px 0 10px}
+.meta{font-size:14px;color:var(--muted);margin:0 0 22px}
+.lead{font-size:19px}
+h2{font-size:clamp(23px,3vw,28px);line-height:1.2;margin:40px 0 10px;letter-spacing:-.01em}
+h3{font-size:19px;margin:26px 0 6px}
+p,li{color:#3d2c22}
+li{margin:6px 0}
+code{background:var(--cream-2);padding:2px 6px;border-radius:6px;font-size:.9em;word-break:break-word}
+pre{background:var(--ink);color:#f6efe3;padding:14px 16px;border-radius:12px;overflow-x:auto;font-size:14px}
+pre code{background:none;padding:0;color:inherit}
+.note{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--rust);border-radius:12px;padding:14px 18px;margin:20px 0}
+.note p{margin:0}
+.toc{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 20px;margin:20px 0}
+.toc p{margin:0 0 4px;font-weight:600}.toc ol{margin:0;padding-left:20px}
+.cta{background:var(--cream-2);border-radius:18px;padding:24px;margin:36px 0;display:grid;grid-template-columns:1fr;gap:12px}
+.cta h2{margin:0;font-size:24px}.cta p{margin:0}
+.cta img{border-radius:12px;box-shadow:0 14px 34px rgba(43,29,22,.2)}
+table{width:100%;border-collapse:collapse;font-size:15px;margin:16px 0;display:block;overflow-x:auto}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--cream-2)}
+.related{border-top:1px solid var(--line);margin-top:40px;padding-top:10px}
+.related ul{padding-left:20px}
+footer{padding:30px 0 60px;color:var(--muted);font-size:14px;text-align:center}
+footer a{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="nav"><a class="brand" href="/"><img src="/img/icon.png" alt="" width="36" height="36">Gigapolis</a><nav><a class="btn btn-dark" style="padding:9px 16px" href="/#download">Download</a></nav></header>
+  <article>
+    <p class="crumbs"><a href="/">Home</a> › <a href="/guides/free-up-space-mac">Guides</a></p>
+    <h1>How to free up disk space on a Mac</h1>
+    <p class="meta">By the Gigapolis team · Updated 4 November 2026</p>
+<p class="lead">To free up disk space on a Mac, first find out what's using it, then clear the biggest things you don't need: caches, local Time Machine snapshots, old downloads, large files you've forgotten, unused apps and duplicate photos. This guide walks through each one using only what's built into macOS, and shows the faster route with Gigapolis at the end of each step.</p>
+
+<div class="toc"><p>In this guide</p><ol>
+<li><a href="#see">See what's using your storage</a></li>
+<li><a href="#trash">Empty the Trash</a></li>
+<li><a href="#downloads">Clear out old downloads</a></li>
+<li><a href="#large">Find and remove large files</a></li>
+<li><a href="#caches">Clear caches</a></li>
+<li><a href="#system-data">Shrink System Data</a></li>
+<li><a href="#apps">Uninstall apps you don't use</a></li>
+<li><a href="#photos">Remove duplicate photos</a></li>
+<li><a href="#icloud">Let iCloud store older files</a></li>
+</ol></div>
+
+<div class="note"><p><b>Before you delete anything:</b> make sure you have a recent backup. Move things to the Trash rather than deleting them outright, so you can put them back if something goes wrong.</p></div>
+
+<h2 id="see">1. See what's using your storage</h2>
+<p>Open <b>System Settings → General → Storage</b>. The bar at the top splits your disk into Applications, Documents, Photos, System Data and so on. Underneath, macOS offers a few recommendations, and the ⓘ button next to each category lists its files.</p>
+<p>The built-in view is a good start, but it can't show you inside System Data, and it doesn't show which folders are biggest. A disk space analyzer fills that gap. <a href="/">Gigapolis</a> scans your whole disk and draws it as a 3D city, with one building per category: the tallest building is what's using the most space, and clicking it lists the files inside, biggest first.</p>
+
+<h2 id="trash">2. Empty the Trash</h2>
+<p>Files you've deleted still take up space until the Trash is emptied. Right-click the Trash in the Dock and choose <b>Empty Trash</b>. To do this automatically, open Finder, choose <b>Finder → Settings → Advanced</b> and turn on <b>Remove items from the Trash after 30 days</b>.</p>
+<p>Apps like Photos and Mail have their own trash too: check <b>Recently Deleted</b> in Photos and the Deleted folder in Mail.</p>
+
+<h2 id="downloads">3. Clear out old downloads</h2>
+<p>The Downloads folder quietly fills up with installers (<code>.dmg</code> and <code>.pkg</code> files), zips and one-off documents. In Finder, open Downloads, switch to list view (<b>⌘2</b>) and sort by <b>Size</b> or <b>Date Added</b>. Installers for apps you've already installed are safe to remove.</p>
+<p>Gigapolis's free <b>Street Sweep</b> lists downloads you haven't touched in over 60 days, alongside caches and the Trash, so you can clear them in one go.</p>
+
+<h2 id="large">4. Find and remove large files</h2>
+<p>A handful of big files, such as old video projects, disk images or virtual machines, often take more space than thousands of small ones. Our guide on <a href="/guides/find-large-files-mac">how to find large files on a Mac</a> covers three ways to track them down, including Finder search by file size.</p>
+
+<h2 id="caches">5. Clear caches</h2>
+<p>Caches are files apps keep to load things faster. They're safe to clear because apps rebuild what they need, but some grow to several gigabytes. See <a href="/guides/clear-cache-mac">how to clear cache on a Mac</a> for the user cache folder and each browser.</p>
+
+<h2 id="system-data">6. Shrink System Data</h2>
+<p>If the Storage bar shows a huge grey <b>System Data</b> section, it's usually local Time Machine snapshots, caches and logs. Our guide <a href="/guides/system-data-mac">What is System Data on a Mac?</a> explains what's in it and what's safe to remove.</p>
+
+<h2 id="apps">7. Uninstall apps you don't use</h2>
+<p>Dragging an app to the Trash removes the app, but often leaves its support files behind in <code>~/Library/Application Support</code>, <code>~/Library/Caches</code> and <code>~/Library/Containers</code>. In <b>System Settings → General → Storage → Applications</b> you can sort apps by size and see when you last used them.</p>
+<p>Gigapolis's free <b>App Uninstaller</b> removes an app together with the leftovers it can match to it, and Pro's Deep Clean finds leftovers from apps you removed in the past.</p>
+
+<h2 id="photos">8. Remove duplicate photos</h2>
+<p>The Photos app has a built-in <b>Duplicates</b> album (macOS Ventura and later) in the sidebar under Utilities, where you can merge exact and near-exact copies. Gigapolis's <b>Photo Studio</b> also finds look-alike shots, such as bursts of the same scene, and picks the sharpest copy for you to keep.</p>
+
+<h2 id="icloud">9. Let iCloud store older files</h2>
+<p>If you pay for iCloud storage, <b>Store in iCloud</b> (in the Storage settings) keeps recent files on your Mac and older ones in the cloud, downloading them when you open them. It doesn't delete anything, but it does mean those files need the internet to open.</p>
+
+<div class="cta">
+  <img src="/img/ui-day.jpg" width="1440" height="900" alt="Gigapolis showing a Mac's storage as a 3D city" loading="lazy">
+  <h2>Do all of this from one window</h2>
+  <p>Gigapolis shows your storage as a 3D city, so the space hogs stand out at a glance. Street Sweep, Maintenance and the App Uninstaller are free (up to 20 GB of clean-up a month). Everything goes to the Trash first, and system folders are never touched.</p>
+  <p><a class="btn btn-primary" href="/#download">Download Gigapolis free</a></p>
+</div>
+<h2 id="faq">Questions</h2>
+<h3>How much free space should a Mac have?</h3>
+<p>Aim to keep at least 10–15% of your disk free, or around 20 GB on smaller drives. macOS needs room for updates, swap files and caches, and gets slow when the disk is nearly full.</p>
+<h3>Is it safe to delete System Data on a Mac?</h3>
+<p>Not all of it. Caches, old logs and local Time Machine snapshots are safe to remove. Core macOS files are not, and you can't delete them anyway without turning off system protection.</p>
+    <div class="related"><h2>Related guides</h2><ul>
+<li><a href="/guides/system-data-mac">What is System Data on a Mac, and how do you clear it?</a></li>
+<li><a href="/guides/find-large-files-mac">How to find large files on a Mac</a></li>
+<li><a href="/guides/clear-cache-mac">How to clear cache on a Mac</a></li>
+<li><a href="/alternatives/daisydisk">DaisyDisk alternatives for Mac</a></li>
+    </ul></div>
+  </article>
+</div>
+<footer><div class="wrap">© 2026 <a href="/">Gigapolis disk space analyzer</a> · <a href="/guides/free-up-space-mac">Free up space on Mac</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/refund">Refunds</a> · <a href="mailto:hello@getgigapolis.com">Contact</a></div></footer>
+<script>
+// Privacy-friendly visit count: no cookies, no IDs (see /privacy).
+(function () {
+  if (navigator.webdriver || !navigator.sendBeacon) return;
+  var src = null;
+  try { src = sessionStorage.getItem('gp_src'); } catch (e) {}
+  if (src) return;
+  var q = new URLSearchParams(location.search);
+  src = q.get('ref') || q.get('utm_source') || '';
+  if (!src && document.referrer) { try { var h = new URL(document.referrer).hostname; if (h !== location.hostname) src = h; } catch (e) {} }
+  src = src || 'direct';
+  try { sessionStorage.setItem('gp_src', src); } catch (e) {}
+  try { navigator.sendBeacon('/api/track', new Blob([JSON.stringify({ k: 'visit', p: '', s: src })], { type: 'text/plain' })); } catch (e) {}
+})();
+</script>
+</body>
+</html>
