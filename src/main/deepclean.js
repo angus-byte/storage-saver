@@ -17,6 +17,9 @@ const INSTALLER_EXT = /\.(dmg|pkg|iso|xip|mpkg|msi)$/i;
 // Apple's own Application Support folders, never offered as leftovers.
 const SUPPORT_KEEP = /^(com\.apple|apple|addressbook|callhistory|clouddocs|crashreporter|dock|filefileprovider|fileprovider|icloud|knowledge|mobilesync|quick ?look|sync ?services|ubiquity|accounts|animoji|cloudkit|contextstore|default|familycircle|homekit|identityservices|siri|spotlight|text ?replacement|videoconference|networkserviceproxy|com\.microsoft\.autoupdate)/i;
 
+// Windows AppData folders that belong to Windows or are shared by many apps.
+const WIN_KEEP = /^(\.|\{|microsoft|windows|packages|programs|temp|tmp|comms|connecteddevicesplatform|d3dscache|crashdumps|virtualstore|package cache|publishers|placeholdertilelogofolder|history|identities|elevateddiagnostics|fontcache|iconcache|squirreltemp|gigapolis|storage-saver|electron|npm|npm-cache|nuget|pip|yarn|programdata|application data|local settings|desktop|documents|downloads|nvidia|nvidia corporation|amd|intel|realtek|apple|apple computer|mozilla|google|adobe|python|java|sun|oracle|steam)$/i;
+
 const lc = (p) => p.replace(/\\/g, '/').toLowerCase();
 const strip = (n, extra = {}) => ({ name: n.name, path: n.path, size: n.size, kind: n.kind || 'cache', mtime: n.mtime || 0, isDir: !!n.isDir, ...extra });
 const total = (list) => list.reduce((s, n) => s + n.size, 0);
@@ -192,18 +195,22 @@ function belongsToApp(folder, apps) {
   return false;
 }
 
-async function appLeftovers(home, now, listApps = installedApps) {
+async function appLeftovers(home, now, listApps = installedApps, platform = 'darwin') {
   const apps = await listApps(home);
   if (!apps.names.size) return [];
   const out = [];
-  const roots = [path.join(home, 'Library', 'Application Support'), path.join(home, 'Library', 'Containers')];
+  const win = platform === 'win32';
+  const KEEP = win ? WIN_KEEP : SUPPORT_KEEP;
+  const roots = win
+    ? [path.join(home, 'AppData', 'Roaming'), path.join(home, 'AppData', 'Local'), path.join(home, 'AppData', 'LocalLow')]
+    : [path.join(home, 'Library', 'Application Support'), path.join(home, 'Library', 'Containers')];
   for (const root of roots) {
     let entries = [];
     try {
       entries = await fsp.readdir(root, { withFileTypes: true });
     } catch {}
     for (const e of entries) {
-      if (!e.isDirectory() || SUPPORT_KEEP.test(e.name) || belongsToApp(e.name, apps)) continue;
+      if (!e.isDirectory() || KEEP.test(e.name) || belongsToApp(e.name, apps)) continue;
       const p = path.join(root, e.name);
       const mtime = await newestMtime(p);
       if (now - mtime < 90 * DAY) continue;
@@ -333,7 +340,8 @@ async function deepSuggestions(tree, { home = require('os').homedir(), now = Dat
   const [render, dups, leftovers, backups, dev, logs, mail] = await Promise.all([
     renderCaches(tree),
     findDuplicates(tree),
-    mac ? appLeftovers(home, now, listApps) : [], // Windows apps keep data under vendor names: too risky to guess
+    // Windows needs the registry's app list passed in (main.js); without it, nothing is guessed.
+    mac ? appLeftovers(home, now, listApps) : platform === 'win32' && listApps ? appLeftovers(home, now, listApps, platform) : [],
     iosBackups(home, now, platform),
     devJunk(tree, home, now, platform),
     logsAndInstallers(tree, home, now, platform),
