@@ -219,7 +219,7 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
       const b = document.createElement('button');
       b.id = 'btn-deep-unlock';
       b.className = 'primary';
-      b.textContent = `Unlock Deep Clean · ${st ? st.priceLabel : '$19.99'} once`;
+      b.textContent = `Unlock Deep Clean · ${st ? st.priceLabel : '$19.99'} lifetime`;
       b.onclick = () => showUpgrade('deep');
       wrap.appendChild(b);
     }
@@ -286,7 +286,7 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
       const more = deepTotal();
       card.innerHTML = `<button class="close" aria-label="Close">×</button>
         <span class="pro-badge">PRO</span><h2>Gigapolis Pro</h2>
-        <div class="price">${esc(st ? st.priceLabel : '$19.99')} <small>once. No subscription. Yours forever.</small></div>
+        <div class="price">${esc(st ? st.priceLabel : '$19.99')} <small>lifetime. Pay once, no subscription.</small></div>
         ${why}
         ${more ? `<p style="margin-top:12px">Deep Clean found <b class="found">${fmt(more)}</b> more on this ${DEMO ? 'demo city' : 'Mac'}.</p>` : ''}
         ${featureList()}

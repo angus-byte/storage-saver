@@ -51,5 +51,8 @@ html = html
   .replace("import { initPhotos } from './photos.js';\n", '')
   .replace("import { initPerformance } from './perf.js';\n", '')
   .replace('<script type="module">\n', () => `<script type="module">\n${platformJs}\n${cityhall}\n${privacy}\n${photosJs}\n${perfJs}\n`);
+// Demo-only mock of the menu bar / tray widget, run after the app has started.
+const demoTray = fs.readFileSync(path.join(__dirname, 'demo-tray.js'), 'utf8');
+html = html.replace('</body>', () => `  <script type="module">\n${demoTray}\n</script>\n</body>`);
 fs.writeFileSync(path.join(root, 'demo', 'index.html'), html);
 console.log('demo/index.html written');
