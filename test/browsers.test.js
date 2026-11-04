@@ -148,7 +148,7 @@ test('Firefox: history cleared but bookmarks kept; busy database refused', async
   assert.ok(fs.existsSync(path.join(prof, 'cookies.sqlite')), 'cookies untouched');
 });
 
-test('Safari: needs Full Disk Access when its folder cannot be read', { skip: process.getuid && process.getuid() === 0 }, async () => {
+test('Safari: needs Full Disk Access when its folder cannot be read', { skip: process.platform === 'win32' || (process.getuid && process.getuid() === 0) }, async () => {
   const home = tmp();
   fs.mkdirSync(path.join(home, 'Library/Safari'), { recursive: true });
   fs.chmodSync(path.join(home, 'Library/Safari'), 0);
