@@ -42,7 +42,7 @@ const req = (body, headers = {}) =>
   new Request('https://getgigapolis.com/api/track', {
     method: 'POST',
     body: JSON.stringify(body),
-    headers: { 'User-Agent': UA, 'Sec-Fetch-Site': 'same-origin', ...headers },
+    headers: { 'User-Agent': UA, 'Sec-Fetch-Site': 'same-origin', 'Accept-Language': 'en-AU,en;q=0.9', ...headers },
   });
 
 test('track counts visits and downloads as daily totals', async () => {
@@ -62,6 +62,8 @@ test('track ignores bots, other sites and junk', async () => {
   const env = { STATS_DB: fakeDB() };
   assert.equal(await handleTrack(req({ k: 'visit' }, { 'User-Agent': 'Googlebot/2.1 (+http://www.google.com/bot.html)' }), env, NOW), 'bot');
   assert.equal(await handleTrack(req({ k: 'visit' }, { 'User-Agent': 'Mozilla/5.0 HeadlessChrome/120.0 Safari/537.36' }), env, NOW), 'bot');
+  const noLang = new Request('https://getgigapolis.com/api/track', { method: 'POST', body: JSON.stringify({ k: 'visit' }), headers: { 'User-Agent': UA } });
+  assert.equal(await handleTrack(noLang, env, NOW), 'bot');
   assert.equal(await handleTrack(req({ k: 'visit' }, { 'Sec-Fetch-Site': 'cross-site' }), env, NOW), 'cross-site');
   assert.equal(await handleTrack(req({ k: 'visit' }, { Origin: 'https://evil.example' }), env, NOW), 'cross-site');
   assert.equal(await handleTrack(req({ k: 'hack' }), env, NOW), 'bad');
