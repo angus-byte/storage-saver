@@ -39,6 +39,10 @@ fs.mkdirSync(path.join(root, 'demo'), { recursive: true });
 // City Hall tab (apps + startup items): inlined ahead of the app code.
 const cityhall = r('cityhall.js').replace(/^export /gm, '').replace("import { IS_WIN } from './platform.js';\n", '');
 const platformJs = r('platform.js').replace(/^export /gm, '');
-html = html.replace("import { initCityHall } from './cityhall.js';\n", '').replace('<script type="module">\n', () => `<script type="module">\n${platformJs}\n${cityhall}\n`);
+const photosJs = r('photos.js').replace(/^export /gm, '');
+html = html
+  .replace("import { initCityHall } from './cityhall.js';\n", '')
+  .replace("import { initPhotos } from './photos.js';\n", '')
+  .replace('<script type="module">\n', () => `<script type="module">\n${platformJs}\n${cityhall}\n${photosJs}\n`);
 fs.writeFileSync(path.join(root, 'demo', 'index.html'), html);
 console.log('demo/index.html written');
