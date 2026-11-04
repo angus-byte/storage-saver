@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, Notification, nativeImage, powerMonitor } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, shell, dialog, Notification, nativeImage, powerMonitor } = require('electron');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -97,6 +97,7 @@ app.whenReady().then(() => {
   setInterval(() => plan.revalidate().then(pushPlan), 6 * 3600000);
   startWeeklyCheckup();
   startAutoUpdates();
+  setAppMenu();
   // Opened at login for the weekly check-up: stay in the background.
   const hidden = WIN ? process.argv.includes('--hidden') : process.platform === 'darwin' && app.getLoginItemSettings().wasOpenedAsHidden;
   if (!hidden) createWindow();
@@ -107,14 +108,65 @@ app.whenReady().then(() => {
 
 // Auto-update from GitHub Releases (latest-mac.yml / latest.yml on Windows). Downloads in the
 // background and installs on next quit, with a notification when ready.
+// "Check for Updates…" (app menu on Mac, tray menu on both) checks right away and offers a restart.
+let updater = null;
+let manualCheck = false;
 function startAutoUpdates() {
   if (!app.isPackaged) return;
-  let autoUpdater;
-  try { ({ autoUpdater } = require('electron-updater')); } catch { return; }
-  autoUpdater.on('error', (err) => console.warn('Update check failed:', err && err.message));
-  const check = () => autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+  try { ({ autoUpdater: updater } = require('electron-updater')); } catch { return; }
+  updater.on('error', (err) => {
+    console.warn('Update check failed:', err && err.message);
+    if (manualCheck) updateDialog('Couldn’t check for updates', (err && err.message) || 'Please try again later.');
+    manualCheck = false;
+  });
+  updater.on('update-not-available', () => {
+    if (manualCheck) updateDialog('You’re up to date', `Gigapolis ${app.getVersion()} is the latest version.`);
+    manualCheck = false;
+  });
+  updater.on('update-downloaded', async (info) => {
+    if (!manualCheck) return;
+    manualCheck = false;
+    const { response } = await updateDialog(`Gigapolis ${info.version} is ready`, 'Restart now to install it?', ['Restart Now', 'Later']);
+    if (response === 0) setImmediate(() => updater.quitAndInstall());
+  });
+  const check = () => updater.checkForUpdatesAndNotify().catch(() => {});
   setTimeout(check, 10000);
   setInterval(check, 6 * 3600000);
+}
+
+function updateDialog(message, detail, buttons = ['OK']) {
+  const opts = { type: 'info', message, detail, buttons, defaultId: 0, cancelId: buttons.length - 1 };
+  return win && !win.isDestroyed() ? dialog.showMessageBox(win, opts) : dialog.showMessageBox(opts);
+}
+
+function checkForUpdatesNow() {
+  if (!updater) return updateDialog('Updates unavailable', 'Updates only work in the installed app.');
+  manualCheck = true;
+  updater.checkForUpdates().catch(() => {});
+}
+
+function setAppMenu() {
+  if (process.platform !== 'darwin') return;
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { label: 'Check for Updates…', click: checkForUpdatesNow },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+  ]));
 }
 
 // Only reached when "Keep running in menu bar / tray" is off: then closing the
@@ -231,6 +283,7 @@ function startTray() {
       open: () => showWindow(),
       settings,
       onSetting,
+      checkUpdates: checkForUpdatesNow,
       quit: () => app.quit(),
     });
   } catch (err) {

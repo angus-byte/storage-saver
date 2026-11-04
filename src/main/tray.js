@@ -15,7 +15,7 @@ function fmt(bytes) {
 
 /**
  * opts: getDisk() → {free,total}, getSafe() → {state:'unknown'|'checking'|'ready'|'cleaning', bytes},
- * safeClean(), checkSafe(), open(tab), settings, onSetting(key, value), quit()
+ * safeClean(), checkSafe(), open(tab), settings, onSetting(key, value), checkUpdates(), quit()
  */
 function createTray(opts) {
   const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', MAC ? 'trayTemplate.png' : 'tray-win.png'));
@@ -46,6 +46,7 @@ function createTray(opts) {
       toggle(MAC ? 'Keep running in menu bar' : 'Keep running in system tray', 'keepInTray'),
       toggle('Open at login', 'launchAtLogin'),
       { type: 'separator' },
+      { label: 'Check for Updates…', click: () => opts.checkUpdates && opts.checkUpdates() },
       { label: 'Quit Gigapolis', click: () => opts.quit() },
     ]);
     tray.setContextMenu(menu);

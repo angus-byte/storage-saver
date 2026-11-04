@@ -152,13 +152,9 @@ function readPlistJson(file) {
   if (process.platform !== 'darwin')
     return fsp.readFile(file, 'utf8').then((x) => (x.includes('<plist') ? parseXmlPlist(x) : null), () => null);
   return new Promise((resolve) => {
-    execFile('/usr/bin/plutil', ['-convert', 'json', '-o', '-', file], { timeout: 4000 }, (err, stdout) => {
-      if (err) return resolve(null);
-      try {
-        resolve(JSON.parse(stdout));
-      } catch {
-        resolve(null);
-      }
+    // xml1, not json: plists with <date> values (every iPhone backup) can't convert to JSON.
+    execFile('/usr/bin/plutil', ['-convert', 'xml1', '-o', '-', file], { timeout: 4000 }, (err, stdout) => {
+      resolve(err ? null : parseXmlPlist(String(stdout)));
     });
   });
 }
