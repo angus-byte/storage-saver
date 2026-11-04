@@ -112,6 +112,17 @@ let night = false; // target state
 let nightK = 0; // 0 = full day, 1 = full night; eased towards the target each frame
 const clock = new THREE.Clock();
 const NIGHT_SECONDS = 4.5;
+// Auto day/night: by default the lighting runs a full 24 hours every
+// CYCLE_SECONDS while the app is open. Only the light and sky follow this
+// clock; cars, people and everything else keep their normal speed. Clicking
+// the Day / Night button stops the cycle and stays in that mode.
+const CYCLE_SECONDS = 120;
+const SUN_SWING = 0.4; // radians the sun / moon travel round the sky across the day / night
+let autoCycle = true;
+let cycleP = 0.04; // 0..1 through the day; starts just after sunrise
+let sunAngle = 0;
+const _yAxis = new THREE.Vector3(0, 1, 0);
+const MOON_BASE = new THREE.Vector3(-260, 170, -330);
 let labelPairs = [];
 let pickExtras = []; // roofs, spires, signs and labels that count as clicking their building
 
@@ -151,7 +162,8 @@ scene.add(hemi);
 const key = new THREE.DirectionalLight(0xffe6c4, 3.6); // hard, warm afternoon sun
 key.position.set(130, 95, 55); // lower sun: longer, crisper shadows
 key.castShadow = true;
-key.shadow.mapSize.set(2048, 2048);
+// Finer shadow map on Mac so moving sun shadows glide; Windows laptops keep 2048 for speed.
+key.shadow.mapSize.setScalar(window.storage && window.storage.platform === "win32" ? 2048 : 4096);
 key.shadow.camera.left = -140;
 key.shadow.camera.right = 140;
 key.shadow.camera.top = 140;
@@ -159,7 +171,7 @@ key.shadow.camera.bottom = -140;
 key.shadow.camera.far = 500;
 key.shadow.bias = -0.0002;
 key.shadow.radius = 1.5; // crisp daytime shadows (softened at night in applyNight)
-key.shadow.blurSamples = 12;
+key.shadow.blurSamples = 16;
 scene.add(key);
 const fill = new THREE.DirectionalLight(0x9fd8e8, 0.12);
 fill.position.set(-120, 60, -90);
@@ -674,21 +686,32 @@ const lerpHex = (target, a, b, k) => target.setHex(a).lerp(_c2.setHex(b), k);
 function applyNight() {
   const k = nightK;
   document.documentElement.style.setProperty('--night', k.toFixed(3));
+  // Golden hour: a warm glow that peaks just before the sun sets (and, run
+  // backwards, just after it rises) and tints the sky, fog and light.
+  const glow = Math.max(0, 1 - Math.abs(k - 0.35) / 0.35);
+  const warm = glow * glow * (3 - 2 * glow);
+  document.documentElement.style.setProperty('--dusk', warm.toFixed(3));
   document.body.classList.toggle('night', k > 0.5);
-  $('btn-night').textContent = night ? '☀ Day' : '☾ Night';
+  $('btn-night').textContent = nightLabel();
   scene.fog.color.copy(lerpHex(_c1, 0x4fbdbb, 0x0c1430, k));
   hemi.color.copy(lerpHex(_c1, 0xdff3ef, 0x3a4a7a, k));
   hemi.groundColor.copy(lerpHex(_c1, 0x4a4238, 0x0c1020, k));
+  scene.fog.color.lerp(_c2.setHex(0xe8875a), warm * 0.7);
+  // Thicker haze in the golden hour.
+  scene.fog.near = 320 - 150 * warm;
+  scene.fog.far = 700 - 200 * warm;
+  hemi.color.lerp(_c2.setHex(0xffb98a), warm * 0.55);
   hemi.intensity = 0.4 + (0.35 - 0.4) * k;
   fill.intensity = 0.12 + (0.15 - 0.12) * k;
-  key.shadow.radius = 1.5 + 4.5 * k;
+  // Softer shadow edges while the sun is moving, so they glide rather than shimmer.
+  key.shadow.radius = (autoCycle ? 6 : 1.5) + 4.5 * k;
   renderer.toneMappingExposure = 0.98 + (0.95 - 0.98) * k;
   scene.environment = k < 0.5 ? envDay : envNight;
   scene.environmentIntensity = k < 0.5 ? 0.28 * (1 - k * 1.4) : 0.3 * (k - 0.3);
   // Sun: warm and high → low orange at the horizon → cool moonlight from the other side.
   if (k < 0.5) {
     const u = k / 0.5;
-    key.color.copy(lerpHex(_c1, 0xffe6c4, 0xff7a3d, u));
+    key.color.copy(lerpHex(_c1, 0xffe6c4, 0xff7a3d, Math.min(1, u * 1.6)));
     key.intensity = 3.6 + (1.1 - 3.6) * u;
     key.position.set(130 + (170 - 130) * u, 95 + (14 - 95) * u, 55 + (-40 - 55) * u);
   } else {
@@ -697,6 +720,7 @@ function applyNight() {
     key.intensity = 1.1 + (0.55 - 1.1) * u;
     key.position.set(170 + (-90 - 170) * u, 14 + (130 - 14) * u, -40 + (-70 + 40) * u);
   }
+  applySunAngle();
   stars.visible = k > 0.02;
   stars.material.opacity = (0.78 + 0.2 * Math.sin(clock.elapsedTime * 2.3)) * Math.max(0, (k - 0.3) / 0.7);
   moon.visible = k > 0.3;
@@ -791,11 +815,52 @@ function stepFocus(dt) {
   focusSpot.intensity = 6 * focusK * (beamT > 0.8 ? 1 : beamT / 0.8);
 }
 
+function nightLabel() {
+  const isNight = autoCycle ? nightK > 0.5 : night;
+  return isNight ? '☀ Day' : '☾ Night';
+}
 function toggleNight() {
-  night = !night;
-  $('btn-night').textContent = night ? '☀ Day' : '☾ Night';
+  // While the cycle runs the button jumps to the other half of the day; either
+  // way the cycle stops and the city stays in the chosen mode.
+  night = autoCycle ? nightK <= 0.5 : !night;
+  autoCycle = false;
+  $('btn-night').textContent = nightLabel();
+}
+// Rotates the sun (key light) and moon round the city by sunAngle, on top of
+// the base position applyNight picks for the current nightK.
+const _keyBase = new THREE.Vector3(130, 95, 55);
+function applySunAngle() {
+  _keyBase.copy(key.position);
+  key.position.applyAxisAngle(_yAxis, sunAngle);
+  moon.position.copy(MOON_BASE).applyAxisAngle(_yAxis, sunAngle);
+}
+const smooth = (x) => x * x * (3 - 2 * x);
+// Day plan as a fraction of the cycle: day, dusk, night, dawn.
+const DUSK_AT = 0.36;
+const NIGHT_AT = 0.56;
+const DAWN_AT = 0.8;
+function cycleState(p) {
+  if (p < DUSK_AT) return { k: 0, a: SUN_SWING * (1 - p / DUSK_AT) };
+  if (p < NIGHT_AT) return { k: smooth((p - DUSK_AT) / (NIGHT_AT - DUSK_AT)), a: 0 };
+  if (p < DAWN_AT) return { k: 1, a: SUN_SWING * ((p - NIGHT_AT) / (DAWN_AT - NIGHT_AT)) };
+  return { k: 1 - smooth((p - DAWN_AT) / (1 - DAWN_AT)), a: SUN_SWING };
+}
+function stepCycle(dt) {
+  cycleP = (cycleP + dt / CYCLE_SECONDS) % 1;
+  const { k, a } = cycleState(cycleP);
+  sunAngle = a;
+  if (k !== nightK) {
+    nightK = k;
+    night = k > 0.5;
+    applyNight(); // full relight only while the light is changing
+  } else {
+    // Plateau (full day or night): just move the sun / moon.
+    key.position.copy(_keyBase);
+    applySunAngle();
+  }
 }
 function stepNight(dt) {
+  if (autoCycle) return stepCycle(dt);
   const target = night ? 1 : 0;
   if (Math.abs(nightK - target) < 0.0005) {
     if (nightK !== target) {
@@ -3597,4 +3662,4 @@ if (DEMO) {
 }
 
 // Exposed for automated UI checks.
-window.__storageSaver = { perf, maint, state, openCategory, layout, toggleNight, buildSite, setScanProgress, pro, seasons, camera, controls, blocks };
+window.__storageSaver = { perf, maint, state, openCategory, layout, toggleNight, dayCycle: (p) => (p === undefined ? { auto: autoCycle, p: cycleP, nightK } : (cycleP = p)), buildSite, setScanProgress, pro, seasons, camera, controls, blocks };
