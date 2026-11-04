@@ -261,6 +261,68 @@ moon.position.set(-260, 170, -330);
 moon.visible = false;
 scene.add(moon);
 nightOnly.push(moon);
+// Haze and sun rays: soft additive light shafts that slant in from the sun
+// across the city. Faint by day, strongest in the golden hour. Each shaft is
+// two crossed planes so it reads from any angle; no post-processing, so it
+// stays cheap on Windows laptops.
+const shafts = new THREE.Group();
+shafts.renderOrder = 4;
+scene.add(shafts);
+const shaftTex = (() => {
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 256;
+  const g = c.getContext('2d');
+  const across = g.createLinearGradient(0, 0, 64, 0);
+  across.addColorStop(0, 'rgba(255,255,255,0)');
+  across.addColorStop(0.5, 'rgba(255,255,255,1)');
+  across.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = across;
+  g.fillRect(0, 0, 64, 256);
+  g.globalCompositeOperation = 'destination-in';
+  const along = g.createLinearGradient(0, 0, 0, 256);
+  along.addColorStop(0, 'rgba(0,0,0,0)');
+  along.addColorStop(0.15, 'rgba(0,0,0,1)');
+  along.addColorStop(0.7, 'rgba(0,0,0,0.6)');
+  along.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = along;
+  g.fillRect(0, 0, 64, 256);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+})();
+const SHAFT_LEN = 420;
+for (let i = 0; i < 9; i++) {
+  const w = 14 + Math.random() * 26;
+  const mat = new THREE.MeshBasicMaterial({ map: shaftTex, color: 0xffd9a8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+  const geo = new THREE.PlaneGeometry(w, SHAFT_LEN).translate(0, -SHAFT_LEN / 2, 0); // hangs down from y=0
+  const s = new THREE.Group();
+  const a = new THREE.Mesh(geo, mat);
+  const b = new THREE.Mesh(geo, mat);
+  b.rotation.y = Math.PI / 2;
+  s.add(a, b);
+  s.position.set((i - 4) * 22 + (Math.random() - 0.5) * 14, 0, (Math.random() - 0.5) * 70);
+  s.userData = { mat, base: 0.55 + Math.random() * 0.45, speed: 0.15 + Math.random() * 0.25, phase: Math.random() * 6.28 };
+  shafts.add(s);
+}
+let shaftLevel = 0;
+const _shaftDir = new THREE.Vector3();
+const _shaftDown = new THREE.Vector3(0, -1, 0);
+function aimShafts() {
+  // Start the shafts out towards the sun and point them down through the city.
+  _shaftDir.copy(key.position).normalize();
+  shafts.position.copy(_shaftDir).multiplyScalar(170);
+  shafts.position.y = Math.max(shafts.position.y, 40);
+  shafts.quaternion.setFromUnitVectors(_shaftDown, _shaftDir.copy(shafts.position).negate().normalize());
+}
+function stepShafts(t) {
+  shafts.visible = shaftLevel > 0.002;
+  if (!shafts.visible) return;
+  for (const s of shafts.children) {
+    const u = s.userData;
+    u.mat.opacity = shaftLevel * u.base * (0.7 + 0.3 * Math.sin(t * u.speed + u.phase));
+  }
+}
 // Reflections: a small sky (gradient dome + sun or moon) rendered into an
 // environment map, so glass, water, metal and cars mirror the sky. One map
 // for day and one for night; applyNight swaps and blends them.
@@ -685,11 +747,23 @@ const lerpHex = (target, a, b, k) => target.setHex(a).lerp(_c2.setHex(b), k);
 function applyNight() {
   const k = nightK;
   document.documentElement.style.setProperty('--night', k.toFixed(3));
+  // Golden hour: a warm glow that peaks just before the sun sets (and, run
+  // backwards, just after it rises) and tints the sky, fog and light.
+  const glow = Math.max(0, 1 - Math.abs(k - 0.35) / 0.35);
+  const warm = glow * glow * (3 - 2 * glow);
+  document.documentElement.style.setProperty('--dusk', warm.toFixed(3));
   document.body.classList.toggle('night', k > 0.5);
   $('btn-night').textContent = nightLabel();
   scene.fog.color.copy(lerpHex(_c1, 0x4fbdbb, 0x0c1430, k));
   hemi.color.copy(lerpHex(_c1, 0xdff3ef, 0x3a4a7a, k));
   hemi.groundColor.copy(lerpHex(_c1, 0x4a4238, 0x0c1020, k));
+  scene.fog.color.lerp(_c2.setHex(0xe8875a), warm * 0.7);
+  // Thicker haze in the golden hour, a little by day, almost none at night.
+  scene.fog.near = 320 - 150 * warm;
+  scene.fog.far = 700 - 200 * warm;
+  shaftLevel = (0.05 * (1 - k) + 0.4 * warm) * (1 - focusK * 0.7);
+  for (const s of shafts.children) s.userData.mat.color.copy(lerpHex(_c1, 0xfff1d6, 0xffa860, warm));
+  hemi.color.lerp(_c2.setHex(0xffb98a), warm * 0.55);
   hemi.intensity = 0.4 + (0.35 - 0.4) * k;
   fill.intensity = 0.12 + (0.15 - 0.12) * k;
   key.shadow.radius = 1.5 + 4.5 * k;
@@ -699,7 +773,7 @@ function applyNight() {
   // Sun: warm and high → low orange at the horizon → cool moonlight from the other side.
   if (k < 0.5) {
     const u = k / 0.5;
-    key.color.copy(lerpHex(_c1, 0xffe6c4, 0xff7a3d, u));
+    key.color.copy(lerpHex(_c1, 0xffe6c4, 0xff7a3d, Math.min(1, u * 1.6)));
     key.intensity = 3.6 + (1.1 - 3.6) * u;
     key.position.set(130 + (170 - 130) * u, 95 + (14 - 95) * u, 55 + (-40 - 55) * u);
   } else {
@@ -817,9 +891,17 @@ function toggleNight() {
 // Rotates the sun (key light) and moon round the city by sunAngle, on top of
 // the base position applyNight picks for the current nightK.
 const _keyBase = new THREE.Vector3(130, 95, 55);
+// The sun moves in small steps rather than every frame: a shadow-casting
+// light that creeps each frame makes every shadow edge shimmer.
+const SUN_STEP = 0.035; // radians (~2 degrees)
+const _keyWant = new THREE.Vector3();
+const _keyShown = new THREE.Vector3();
 function applySunAngle() {
   _keyBase.copy(key.position);
-  key.position.applyAxisAngle(_yAxis, sunAngle);
+  _keyWant.copy(key.position).applyAxisAngle(_yAxis, sunAngle);
+  if (!_keyShown.lengthSq() || _keyWant.angleTo(_keyShown) > SUN_STEP) _keyShown.copy(_keyWant);
+  key.position.copy(_keyShown);
+  aimShafts();
   moon.position.copy(MOON_BASE).applyAxisAngle(_yAxis, sunAngle);
 }
 const smooth = (x) => x * x * (3 - 2 * x);
@@ -3119,6 +3201,7 @@ function animate() {
   if (site) updateSite(dt, t);
   stepNight(dt);
   stepFocus(dt);
+  stepShafts(t);
   if (seasons) seasons.step(dt, t);
   if (nightK >= 1) stars.material.opacity = 0.78 + 0.2 * Math.sin(t * 2.3);
   for (const c of clouds.children) {

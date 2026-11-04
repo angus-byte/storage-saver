@@ -36,9 +36,10 @@ body.night {
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif; overflow: hidden; }
-#sky-day, #sky-night, #sky-dim { position: absolute; inset: 0; pointer-events: none; }
+#sky-day, #sky-dusk, #sky-night, #sky-dim { position: absolute; inset: 0; pointer-events: none; }
 #sky-dim { background: #04121a; opacity: var(--focus, 0); }
 #sky-day { background: radial-gradient(ellipse 90% 75% at 55% 30%, #94e0da 0%, #62c8c5 45%, #3aa9ab 100%); }
+#sky-dusk { background: linear-gradient(180deg, #3e4f8f 0%, #8a5c8e 28%, #e2766a 55%, #ffa85a 78%, #ffd08a 100%); opacity: var(--dusk, 0); }
 #sky-night { background: radial-gradient(ellipse 90% 75% at 55% 30%, #1c2d66 0%, #0e1838 45%, #070b1c 100%); opacity: var(--night, 0); }
 #scene { position: absolute; inset: 0; }
 #scene canvas { display: block; }
