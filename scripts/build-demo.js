@@ -43,6 +43,8 @@ const cityhall = r('cityhall.js').replace(/^export /gm, '').replace("import { IS
 const privacy = r('privacy.js').replace(/^export /gm, '').replace("import { IS_WIN } from './platform.js';\n", '');
 // Performance tab (Power Station), same treatment.
 const perfJs = r('perf.js').replace(/^export /gm, '').replace("import { IS_WIN } from './platform.js';\n", '');
+// Maintenance tab (Public Works), same treatment.
+const maintJs = r('maintenance.js').replace(/^export /gm, '').replace("import { IS_WIN } from './platform.js';\n", '');
 const platformJs = r('platform.js').replace(/^export /gm, '');
 const photosJs = r('photos.js').replace(/^export /gm, '');
 html = html
@@ -50,7 +52,8 @@ html = html
   .replace("import { initPrivacy } from './privacy.js';\n", '')
   .replace("import { initPhotos } from './photos.js';\n", '')
   .replace("import { initPerformance } from './perf.js';\n", '')
-  .replace('<script type="module">\n', () => `<script type="module">\n${platformJs}\n${cityhall}\n${privacy}\n${photosJs}\n${perfJs}\n`);
+  .replace("import { initMaintenance } from './maintenance.js';\n", '')
+  .replace('<script type="module">\n', () => `<script type="module">\n${platformJs}\n${cityhall}\n${privacy}\n${photosJs}\n${perfJs}\n${maintJs}\n`);
 // Demo-only mock of the menu bar / tray widget, run after the app has started.
 const demoTray = fs.readFileSync(path.join(__dirname, 'demo-tray.js'), 'utf8');
 html = html.replace('</body>', () => `  <script type="module">\n${demoTray}\n</script>\n</body>`);

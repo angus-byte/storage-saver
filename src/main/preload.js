@@ -57,4 +57,7 @@ contextBridge.exposeInMainWorld('storage', {
   // Power Station (Performance tab)
   perfSample: () => ipcRenderer.invoke('perf:sample'),
   perfQuit: (key, force) => ipcRenderer.invoke('perf:quit', key, force),
+  // Public Works (Maintenance tab)
+  maintList: () => ipcRenderer.invoke('maint:list'),
+  maintRun: (ids) => ipcRenderer.invoke('maint:run', ids),
 });

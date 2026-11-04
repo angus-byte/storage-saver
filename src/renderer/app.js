@@ -4,6 +4,7 @@ import { initCityHall } from './cityhall.js';
 import { initPhotos } from './photos.js';
 import { initPrivacy } from './privacy.js';
 import { initPerformance } from './perf.js';
+import { initMaintenance } from './maintenance.js';
 import { squarify } from './treemap.js';
 import { categorize, CATEGORIES } from './categories.js';
 import { mockTree, mockSuggestions, mockDisk } from './mock.js';
@@ -3467,6 +3468,7 @@ initCityHall({ api, fmt, esc, toast, pro, DEMO });
 initPhotos({ api, fmt, esc, toast, pro, DEMO });
 initPrivacy({ api, fmt, esc, toast, pro, DEMO });
 const perf = initPerformance({ api, fmt, esc, toast, DEMO });
+const maint = initMaintenance({ api, esc, toast, DEMO });
 drives = initDrives({ api, esc, toast, runScan, DEMO });
 if (DEMO) {
   $('btn-scan').querySelector('span').textContent = 'Scan (demo data)';
@@ -3474,4 +3476,4 @@ if (DEMO) {
 }
 
 // Exposed for automated UI checks.
-window.__storageSaver = { perf, state, openCategory, layout, toggleNight, buildSite, setScanProgress, pro, seasons, camera, controls, blocks };
+window.__storageSaver = { perf, maint, state, openCategory, layout, toggleNight, buildSite, setScanProgress, pro, seasons, camera, controls, blocks };
