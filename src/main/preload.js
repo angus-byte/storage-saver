@@ -36,4 +36,7 @@ contextBridge.exposeInMainWorld('storage', {
   listStartup: () => ipcRenderer.invoke('startup:list'),
   removeStartup: (p) => ipcRenderer.invoke('startup:remove', p),
   openLoginItems: () => ipcRenderer.invoke('startup:openSettings'),
+  // Privacy (browser data)
+  listBrowsers: () => ipcRenderer.invoke('privacy:list'),
+  clearBrowser: (id, kinds) => ipcRenderer.invoke('privacy:clear', id, kinds),
 });
