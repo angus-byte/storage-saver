@@ -10,6 +10,8 @@ const config = require('./config');
 const cityhall = require('./cityhall');
 const cityhallWin = require('./cityhall-win');
 const { createProtection, friendlyError } = require('./protect');
+const { createSettings, lowSpaceCheck } = require('./settings');
+const { createTray, fmt } = require('./tray');
 const protection = createProtection();
 const { createDrives, driveMessage } = require('./drives');
 let drives = createDrives(); // reloaded with the saved opt-ins once userData is known
@@ -27,6 +29,9 @@ let win;
 let currentScan = null;
 let lastTree = null;
 let plan = null; // created once the app is ready (needs userData)
+let settings = null;
+let tray = null;
+let isQuitting = false;
 
 function createWindow() {
   win = new BrowserWindow({
@@ -44,23 +49,45 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  // Closing the window keeps Gigapolis in the menu bar / tray (unless switched off).
+  win.on('close', (e) => {
+    if (isQuitting || !settings || !settings.get().keepInTray) return;
+    e.preventDefault();
+    win.hide();
+    if (process.platform === 'darwin' && app.dock) app.dock.hide();
+  });
+  win.on('closed', () => {
+    win = null;
+  });
+}
+
+// Show the city (creating the window if needed), optionally on a given panel tab.
+function showWindow(tab) {
+  if (process.platform === 'darwin' && app.dock) app.dock.show();
+  if (!win || win.isDestroyed()) {
+    createWindow();
+    if (tab) win.webContents.once('did-finish-load', () => win && win.webContents.send('nav:tab', tab));
+  } else {
+    if (win.isMinimized()) win.restore();
+    win.show();
+    if (tab) win.webContents.send('nav:tab', tab);
+  }
+  win.focus();
 }
 
 const WIN = process.platform === 'win32';
 // One Gigapolis at a time: opening it again (e.g. while the weekly check-up
 // runs hidden) just shows the window.
 if (!app.requestSingleInstanceLock()) app.exit(0);
-app.on('second-instance', () => {
-  const w = BrowserWindow.getAllWindows()[0];
-  if (!w) return createWindow();
-  if (w.isMinimized()) w.restore();
-  w.show();
-  w.focus();
+app.on('second-instance', () => showWindow());
+app.on('before-quit', () => {
+  isQuitting = true;
 });
 // Windows needs this for notifications to show the app's name and icon.
 if (WIN) app.setAppUserModelId('com.sommarfilms.storagesaver');
 
 app.whenReady().then(() => {
+  settings = createSettings({ dir: app.getPath('userData') });
   drives = createDrives({ file: path.join(app.getPath('userData'), 'drives.json') });
   plan = createLicence({ dir: app.getPath('userData'), forcePro: !app.isPackaged && process.env.GIGAPOLIS_PRO === '1' });
   plan.revalidate().then(pushPlan);
@@ -70,9 +97,9 @@ app.whenReady().then(() => {
   // Opened at login for the weekly check-up: stay in the background.
   const hidden = WIN ? process.argv.includes('--hidden') : process.platform === 'darwin' && app.getLoginItemSettings().wasOpenedAsHidden;
   if (!hidden) createWindow();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+  else if (process.platform === 'darwin' && app.dock) app.dock.hide();
+  startTray();
+  app.on('activate', () => showWindow());
 });
 
 // Auto-update from GitHub Releases (latest-mac.yml / latest.yml on Windows). Downloads in the
@@ -87,9 +114,129 @@ function startAutoUpdates() {
   setInterval(check, 6 * 3600000);
 }
 
+// Only reached when "Keep running in menu bar / tray" is off: then closing the
+// window quits fully, on Mac and Windows alike.
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  app.quit();
 });
+
+// --- Menu bar / tray widget ---------------------------------------------------
+let safe = { state: 'unknown', bytes: 0, items: [] };
+let lowSpaceArmed = true;
+
+// Safe Clean = caches + Trash, the same two groups as the Safe Clean tab.
+async function updateSafe() {
+  if (!lastTree) return;
+  const s = await withRecycleBin(sweepOnly(suggestions(lastTree)));
+  const items = ['caches', 'trash'].flatMap((k) => (s[k] ? s[k].items : []));
+  safe = { state: 'ready', bytes: items.reduce((n, i) => n + i.size, 0), items };
+  if (tray) tray.render();
+}
+
+async function diskFree() {
+  try {
+    const st = await fsp.statfs(defaultRoots()[0]);
+    return { free: st.bavail * st.bsize, total: st.blocks * st.bsize };
+  } catch {
+    return { free: 0, total: 0 };
+  }
+}
+
+function notify(title, body, tab) {
+  if (!Notification.isSupported()) return;
+  const n = new Notification({ title, body });
+  n.on('click', () => showWindow(tab));
+  n.show();
+}
+
+async function refreshDisk() {
+  const d = await diskFree();
+  if (tray) tray.setDisk(d);
+  const st = settings.get();
+  const r = lowSpaceCheck(lowSpaceArmed, d.free, st.lowSpaceGB);
+  lowSpaceArmed = r.armed;
+  if (r.notify && st.lowSpaceAlert) {
+    notify('Gigapolis: running low on space', `Only ${fmt(d.free)} left.${safe.bytes ? ` Safe Clean can free ${fmt(safe.bytes)}.` : ' Open the city to see what can go.'}`, 'safe');
+  }
+}
+
+// Background rescan for the tray (when the window isn't open to do it).
+async function backgroundScan() {
+  if (currentScan) return;
+  const wc = win && !win.isDestroyed() && win.webContents;
+  if (wc && win.isVisible()) {
+    wc.send('nav:rescan');
+    return;
+  }
+  safe = { ...safe, state: 'checking' };
+  if (tray) tray.render();
+  const controller = new AbortController();
+  currentScan = controller;
+  try {
+    lastTree = await scan(defaultRoots()[0], { signal: controller.signal, skip: scanSkip });
+    await updateSafe();
+  } catch {
+    safe = { state: 'unknown', bytes: 0, items: [] };
+    if (tray) tray.render();
+  } finally {
+    if (currentScan === controller) currentScan = null;
+  }
+}
+
+async function traySafeClean() {
+  const { items, bytes } = safe;
+  if (!items.length) return;
+  const { response } = await dialog.showMessageBox({
+    type: 'question',
+    buttons: ['Safe Clean', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1,
+    title: 'Safe Clean',
+    message: `Free ${fmt(bytes)}?`,
+    detail: 'Moves caches and temp files to the Trash and clears what is already in it. Apps rebuild caches when needed.',
+  });
+  if (response !== 0) return;
+  safe = { ...safe, state: 'cleaning' };
+  tray.render();
+  let freed = 0;
+  let capped = false;
+  for (const it of items) {
+    const res = await emptyFolder(it.path);
+    if (res.some((r) => r.error === 'cap')) capped = true;
+    else if (res.every((r) => r.ok)) freed += it.size;
+  }
+  if (freed) notify('Safe Clean done', `Moved ${fmt(freed)} to the Trash. Empty the Trash to get the space back.`);
+  if (capped) notify('Free limit reached', 'Upgrade to Gigapolis Pro to keep cleaning.', 'safe');
+  safe = { state: 'unknown', bytes: 0, items: [] };
+  refreshDisk();
+  backgroundScan();
+}
+
+function onSetting(key, value) {
+  settings.set({ [key]: value });
+  if (key === 'launchAtLogin') applyLoginItem();
+  if (key === 'lowSpaceAlert' && value) lowSpaceArmed = true;
+  tray.render();
+}
+
+function startTray() {
+  try {
+    tray = createTray({
+      getSafe: () => safe,
+      safeClean: traySafeClean,
+      checkSafe: backgroundScan,
+      open: () => showWindow(),
+      settings,
+      onSetting,
+      quit: () => app.quit(),
+    });
+  } catch (err) {
+    console.warn('Tray unavailable:', err && err.message);
+    return;
+  }
+  refreshDisk();
+  setInterval(refreshDisk, 60000);
+}
 
 // --- IPC -------------------------------------------------------------------
 
@@ -127,6 +274,7 @@ ipcMain.handle('scan:start', async (event, root) => {
       },
     });
     lastTree = tree;
+    updateSafe();
     return { tree, suggestions: await withRecycleBin(sweepOnly(suggestions(tree))) };
   } finally {
     if (currentScan === controller) currentScan = null;
@@ -251,7 +399,8 @@ async function trashPaths(paths) {
 }
 
 // Empties the contents of a folder (e.g. a cache dir) into the Trash, keeping the folder itself.
-ipcMain.handle('fs:emptyFolder', async (_e, dir) => {
+ipcMain.handle('fs:emptyFolder', (_e, dir) => emptyFolder(dir));
+async function emptyFolder(dir) {
   // Emptying the Recycle Bin is the one permanent delete: the person already deleted these.
   if (WIN && /[\\/]\$Recycle\.Bin([\\/]|$)/i.test(dir)) return [{ path: dir, ok: await cityhallWin.emptyRecycleBin(dir) }];
   const guard = protection.check(dir);
@@ -283,7 +432,7 @@ ipcMain.handle('fs:emptyFolder', async (_e, dir) => {
   plan.recordDemolished(sum(sizes, results.filter((r) => r.ok).map((r) => r.path)));
   pushPlan();
   return results;
-});
+}
 
 // --- Plan (free / Pro) + Deep Clean -----------------------------------------
 function pushPlan() {
@@ -330,7 +479,7 @@ const deepOpts = () => (WIN ? { listApps: () => cityhallWin.appNames() } : {});
 // never deletes on its own.
 function applyLoginItem() {
   if (!['darwin', 'win32'].includes(process.platform) || !app.isPackaged) return;
-  const on = plan.isPro() && plan.status().weekly.enabled;
+  const on = settings.get().launchAtLogin || (plan.isPro() && plan.status().weekly.enabled);
   if (WIN) app.setLoginItemSettings({ openAtLogin: on, args: ['--hidden'] });
   else app.setLoginItemSettings({ openAtLogin: on, openAsHidden: true });
 }
@@ -343,6 +492,7 @@ async function weeklyCheckup() {
   try {
     const tree = await scan(defaultRoots()[0], { skip: scanSkip });
     lastTree = tree;
+    updateSafe();
     const sweep = await withRecycleBin(sweepOnly(suggestions(tree)));
     const deep = await deepSuggestions(tree, deepOpts());
     const bytes = [...Object.values(sweep), ...Object.values(deep)].reduce((n, g) => n + g.total, 0);
@@ -350,10 +500,7 @@ async function weeklyCheckup() {
     pushPlan();
     if (bytes > 1024 ** 3 && Notification.isSupported()) {
       const n = new Notification({ title: 'Gigapolis weekly check-up', body: `${(bytes / 1024 ** 3).toFixed(1)} GB can be cleared. Open the city to demolish it.` });
-      n.on('click', () => {
-        if (!BrowserWindow.getAllWindows().length) createWindow();
-        else BrowserWindow.getAllWindows()[0].show();
-      });
+      n.on('click', () => showWindow('clean'));
       n.show();
     }
   } catch {}

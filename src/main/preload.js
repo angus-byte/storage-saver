@@ -39,4 +39,7 @@ contextBridge.exposeInMainWorld('storage', {
   listStartup: () => ipcRenderer.invoke('startup:list'),
   removeStartup: (p) => ipcRenderer.invoke('startup:remove', p),
   openLoginItems: () => ipcRenderer.invoke('startup:openSettings'),
+  // Menu bar / tray: open on a tab, or rescan after a Safe Clean from the tray.
+  onNavigate: (cb) => ipcRenderer.on('nav:tab', (_e, tab) => cb(tab)),
+  onRescan: (cb) => ipcRenderer.on('nav:rescan', () => cb()),
 });

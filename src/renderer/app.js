@@ -3423,6 +3423,14 @@ $('tabs').addEventListener('click', (e) => {
   const tab = e.target.closest('.tab');
   if (tab) showTab(tab.dataset.tab);
 });
+// Opened from the menu bar / tray (e.g. the low-space alert): jump to that tab.
+if (api.onNavigate) {
+  api.onNavigate((tab) => {
+    setPanel(true);
+    showTab(tab);
+  });
+}
+if (api.onRescan) api.onRescan(() => runScan(state.tree ? state.tree.path : null));
 pro = initPro({ api, state, fmt, esc, toast, buildGroup, rerender: () => renderClean(), DEMO });
 seasons = initSeasons({
   THREE,
