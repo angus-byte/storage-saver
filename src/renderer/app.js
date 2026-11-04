@@ -6,6 +6,9 @@ import { categorize, CATEGORIES } from './categories.js';
 import { mockTree, mockSuggestions, mockDisk } from './mock.js';
 import { initPro, demoPlanApi, mockDeep } from './pro.js';
 import { initSeasons } from './seasons.js';
+import { localizeDom } from './platform.js';
+
+localizeDom();
 
 // ---------------------------------------------------------------------------
 // Backend: Electron bridge or in-browser demo
@@ -2953,7 +2956,7 @@ function removeFromTree(item) {
   if (state.suggestions) {
     for (const g of [...Object.values(state.suggestions), ...Object.values(state.deep || {})]) {
       const before = g.items.length;
-      g.items = g.items.filter((i) => i.path !== item.path && !i.path.startsWith(item.path + '/'));
+      g.items = g.items.filter((i) => i.path !== item.path && !i.path.startsWith(item.path + '/') && !i.path.startsWith(item.path + '\\'));
       if (g.items.length !== before) g.total = g.items.reduce((s, i) => s + i.size, 0);
     }
     renderClean();

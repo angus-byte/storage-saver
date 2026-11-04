@@ -1,0 +1,73 @@
+name: Build Windows app
+
+# Builds Gigapolis for Windows (one NSIS installer with x64 + arm64 inside)
+# and attaches it to the same GitHub release as the Mac build
+# (v<package.json version>). latest.yml is uploaded too, which is what the
+# in-app auto-updater reads on Windows.
+#
+# Unsigned for now: Windows SmartScreen shows "Windows protected your PC"
+# on first run (More info → Run anyway). To sign later, buy a code signing
+# certificate and add WIN_CSC_LINK (base64 .pfx) + WIN_CSC_KEY_PASSWORD
+# repository secrets; electron-builder picks them up automatically.
+#
+# Pull requests build and test only (artifact attached to the run), nothing
+# is published.
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+      - name: Build installer
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          [ -n "$CSC_LINK" ] || export CSC_IDENTITY_AUTO_DISCOVERY=false
+          [ -n "$CSC_LINK" ] || unset CSC_LINK CSC_KEY_PASSWORD
+          npx electron-builder --win nsis --x64 --arm64 --publish never
+
+      - run: ls -la dist
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gigapolis-windows
+          path: |
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/latest.yml
+
+      - name: Publish release
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v$(node -p "require('./package.json').version")"
+          # The Mac workflow decides whether the release is a full release or a
+          # prerelease (it finishes later because of notarisation). Create it as
+          # a prerelease if Windows gets there first, and never change the flag.
+          for i in 1 2 3; do
+            gh release view "$TAG" >/dev/null 2>&1 && break
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "Gigapolis $TAG" --notes "Mac: *-arm64.dmg (Apple silicon) or *-x64.dmg (Intel). Windows: Gigapolis-Setup-*.exe (unsigned: on first run choose More info → Run anyway)." --prerelease && break
+            sleep 15
+          done
+          gh release upload "$TAG" dist/*.exe dist/*.exe.blockmap dist/latest.yml --clobber

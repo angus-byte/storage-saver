@@ -74,7 +74,7 @@ test('listStartup reads plists and ranks flagged first (macOS only: needs plutil
 test('mailAttachments finds Mail Downloads', async () => {
   const home = tmp();
   put(path.join(home, 'Library/Containers/com.apple.mail/Data/Library/Mail Downloads/abc/file.pdf'), 6 * 1024 * 1024);
-  const out = await mailAttachments(home);
+  const out = await mailAttachments(home, 'darwin');
   assert.strictEqual(out.length, 1);
   assert.strictEqual(out[0].mode, 'empty');
 });
