@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld('storage', {
   },
   reveal: (p) => ipcRenderer.invoke('fs:reveal', p),
   pickFolder: () => ipcRenderer.invoke('fs:pickFolder'),
+  listDrives: () => ipcRenderer.invoke('drives:list'),
+  addDrive: (root) => ipcRenderer.invoke('drives:add', root),
+  removeDrive: (root) => ipcRenderer.invoke('drives:remove', root),
   trash: (paths) => ipcRenderer.invoke('fs:trash', paths),
   emptyFolder: (dir) => ipcRenderer.invoke('fs:emptyFolder', dir),
   protectedPaths: () => ipcRenderer.invoke('fs:protected'),
@@ -45,4 +48,10 @@ contextBridge.exposeInMainWorld('storage', {
     ipcRenderer.on('photos:progress', handler);
     return () => ipcRenderer.removeListener('photos:progress', handler);
   },
+  // Privacy (browser data)
+  listBrowsers: () => ipcRenderer.invoke('privacy:list'),
+  clearBrowser: (id, kinds) => ipcRenderer.invoke('privacy:clear', id, kinds),
+  // Menu bar / tray: open on a tab, or rescan after a Safe Clean from the tray.
+  onNavigate: (cb) => ipcRenderer.on('nav:tab', (_e, tab) => cb(tab)),
+  onRescan: (cb) => ipcRenderer.on('nav:rescan', () => cb()),
 });

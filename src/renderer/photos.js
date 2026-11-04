@@ -28,7 +28,7 @@ const PHOTOS_CSS = `
 #tab-photos .ph-gap { margin-top: 14px; }
 #tab-photos .ph-more { width: 100%; font-size: 12px; margin-bottom: 8px; }
 #tab-photos .ph-bar { padding-top: 4px; }
-#tabs .tab { padding: 7px 5px; font-size: 12px; }
+
 `;
 
 const PAGE = 30; // groups shown per section before "Show more"
