@@ -56,8 +56,8 @@ jobs:
         run: |
           npx electron-builder --mac dir --arm64 --x64 --publish never
           for app in dist/mac-arm64/*.app dist/mac/*.app; do codesign --force --deep --sign - "$app"; done
-          npx electron-builder --mac dmg zip --arm64 --prepackaged "dist/mac-arm64/Storage Saver.app" --publish never
-          npx electron-builder --mac dmg zip --x64 --prepackaged "dist/mac/Storage Saver.app" --publish never
+          npx electron-builder --mac dmg zip --arm64 --prepackaged dist/mac-arm64/*.app --publish never
+          npx electron-builder --mac dmg zip --x64 --prepackaged dist/mac/*.app --publish never
 
       - run: ls -la dist
       - uses: actions/upload-artifact@v4
@@ -66,6 +66,7 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.zip
+            dist/latest-mac.yml
 
       - name: Publish release
         env:
@@ -78,5 +79,9 @@ jobs:
           else
             NOTES="Unsigned Mac build. Apple silicon: *-arm64.dmg. Intel: *-x64.dmg. First launch: right-click the app, choose Open, then Open again."
           fi
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --prerelease --target "$GITHUB_SHA" --title "Storage Saver $TAG" --notes "$NOTES"
-          gh release upload "$TAG" dist/*.dmg dist/*.zip --clobber
+          # Signed builds are full releases so the in-app auto-updater sees them
+          # (it ignores prereleases). Unsigned builds stay prereleases.
+          if [ "$SIGNED" = true ]; then PRE=false; else PRE=true; fi
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --title "Gigapolis $TAG" --notes "$NOTES" $([ "$PRE" = true ] && echo --prerelease)
+          gh release upload "$TAG" $(ls dist/*.dmg dist/*.zip dist/*.blockmap dist/latest-mac.yml 2>/dev/null) --clobber
+          gh release edit "$TAG" --prerelease=$PRE
