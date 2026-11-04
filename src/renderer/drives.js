@@ -5,6 +5,13 @@ const DEMO_DRIVES = [
   { kind: 'cloud', label: 'Google Drive (angus@sommarfilms.com)', path: '/Users/angus/Library/CloudStorage/GoogleDrive-angus@sommarfilms.com', added: false },
   { kind: 'cloud', label: 'iCloud Drive', path: '/Users/angus/Library/Mobile Documents', added: false },
   { kind: 'external', label: 'Samsung T7', path: '/Volumes/Samsung T7', added: false },
+  { kind: 'cloud', label: 'Dropbox', path: '/Users/angus/Dropbox', added: false },
+  { kind: 'cloud', label: 'Creative Cloud Files', path: '/Users/angus/Creative Cloud Files', added: false },
+  { kind: 'external', label: 'Archive A', path: '/Volumes/Archive A', added: false },
+  { kind: 'external', label: 'Archive B', path: '/Volumes/Archive B', added: false },
+  { kind: 'external', label: 'Projects SSD', path: '/Volumes/Projects SSD', added: false },
+  { kind: 'external', label: 'Backup HDD', path: '/Volumes/Backup HDD', added: false },
+  { kind: 'network', label: 'Studio NAS', path: '/Volumes/Studio NAS', added: false },
 ];
 
 export function initDrives({ api, esc, toast, runScan, DEMO }) {
