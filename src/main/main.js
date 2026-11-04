@@ -37,6 +37,7 @@ app.whenReady().then(() => {
   plan.revalidate().then(pushPlan);
   setInterval(() => plan.revalidate().then(pushPlan), 6 * 3600000);
   startWeeklyCheckup();
+  startAutoUpdates();
   // Opened at login for the weekly check-up: stay in the background.
   const hidden = process.platform === 'darwin' && app.getLoginItemSettings().wasOpenedAsHidden;
   if (!hidden) createWindow();
@@ -44,6 +45,18 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+
+// Auto-update from GitHub Releases (latest-mac.yml). Downloads in the
+// background and installs on next quit, with a notification when ready.
+function startAutoUpdates() {
+  if (!app.isPackaged) return;
+  let autoUpdater;
+  try { ({ autoUpdater } = require('electron-updater')); } catch { return; }
+  autoUpdater.on('error', (err) => console.warn('Update check failed:', err && err.message));
+  const check = () => autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+  setTimeout(check, 10000);
+  setInterval(check, 6 * 3600000);
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

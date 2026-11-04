@@ -1,6 +1,6 @@
 {
   "name": "storage-saver",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Keeps your computer's storage low. 3D visualiser of where your space goes, plus safe one-click cleanup.",
   "main": "src/main/main.js",
   "scripts": {
@@ -17,6 +17,7 @@
     "electron-builder": "^26.18.0"
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "three": "^0.170.0"
   },
   "build": {
@@ -50,6 +51,14 @@
       "target": [
         "nsis"
       ]
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "angus-byte",
+        "repo": "storage-saver",
+        "releaseType": "release"
+      }
+    ]
   }
 }
