@@ -14,6 +14,14 @@ const DOC_EXT = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'tx
 
 const CACHE_MARKERS = ['/library/caches/', '/appdata/local/temp/', '/node_modules/', '/.cache/', '/caches/', '/.npm/', '/derived data/', '/deriveddata/', '/.gradle/', '/temp/', '/tmp/', '/cache/', '/com.apple.bird/', '/logs/'];
 const TRASH_MARKERS = ['/.trash/', '/$recycle.bin/'];
+// Only these cache places are offered to Safe Clean. The generic CACHE_MARKERS
+// above colour the city, but a person's own "Logs", "Temp" or "Cache" folder
+// (e.g. ~/Documents/Client Logs) must never be emptied by a one-click sweep.
+const SAFE_CACHE_MARKERS = ['/library/caches/', '/appdata/local/temp/', '/appdata/local/microsoft/windows/inetcache/', '/.cache/', '/.npm/_cacache/', '/com.apple.bird/'];
+function isSafeCache(fullPath) {
+  const p = fullPath.replace(/\\/g, '/').toLowerCase() + '/';
+  return SAFE_CACHE_MARKERS.some((m) => p.includes(m));
+}
 const SYSTEM_MARKERS = ['/system/', '/windows/', '/private/var/', '/usr/', '/library/apple/', '/program files/'];
 
 // File types for grouping folders into city categories. Must match
@@ -231,7 +239,7 @@ function suggestions(tree, now = Date.now()) {
   const seenCachePaths = [];
   // Highest-level cache folders only (don't list every nested cache dir).
   collect(tree, (n) => {
-    if (n.isDir && n.kind === 'cache' && n.size > 50 * 1024 * 1024) {
+    if (n.isDir && n.kind === 'cache' && n.size > 50 * 1024 * 1024 && isSafeCache(n.path)) {
       if (!seenCachePaths.some((p) => n.path.startsWith(p + '/') || n.path.startsWith(p + '\\'))) {
         seenCachePaths.push(n.path);
         topCache.push(n);
@@ -258,4 +266,4 @@ function defaultRoots() {
   return [home];
 }
 
-module.exports = { scan, classify, collect, suggestions, defaultRoots, ext, TYPE_EXT, BUNDLE_TYPE };
+module.exports = { scan, classify, collect, suggestions, defaultRoots, ext, isSafeCache, TYPE_EXT, BUNDLE_TYPE };

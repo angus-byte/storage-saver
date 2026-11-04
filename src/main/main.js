@@ -253,14 +253,17 @@ async function traySafeClean() {
   if (response !== 0) return;
   safe = { ...safe, state: 'cleaning' };
   tray.render();
-  let freed = 0;
+  let freed = 0; // moved to the Trash
+  let emptied = 0; // removed from the Trash for good
   let capped = false;
   for (const it of items) {
     const res = await emptyFolder(it.path);
     if (res.some((r) => r.error === 'cap')) capped = true;
-    else if (res.every((r) => r.ok)) freed += it.size;
+    else if (!res.every((r) => r.ok)) continue;
+    else if (inTrash(it.path)) emptied += it.size;
+    else freed += it.size;
   }
-  if (freed) notify('Safe Clean done', `Moved ${fmt(freed)} to the Trash. Empty the Trash to get the space back.`);
+  if (freed || emptied) notify('Safe Clean done', [freed ? `Moved ${fmt(freed)} to the Trash.` : '', emptied ? `Emptied ${fmt(emptied)} from the Trash.` : '', freed ? 'Empty the Trash to get the space back.' : ''].filter(Boolean).join(' '));
   if (capped) notify('Free limit reached', 'Upgrade to Gigapolis Pro to keep cleaning.', 'safe');
   safe = { state: 'unknown', bytes: 0, items: [] };
   refreshDisk();
@@ -314,7 +317,7 @@ ipcMain.handle('scan:start', async (event, root) => {
   if (currentScan) currentScan.abort();
   const controller = new AbortController();
   currentScan = controller;
-  const target = root || defaultRoots()[0];
+  const target = isAbs(root) ? root : defaultRoots()[0];
   const sender = event.sender;
   const block = driveBlock(target);
   if (block) {
@@ -377,19 +380,25 @@ ipcMain.handle('scan:cancel', () => {
 });
 
 ipcMain.handle('fs:reveal', (_e, p) => {
-  shell.showItemInFolder(p);
+  if (isAbs(p)) shell.showItemInFolder(p);
   return true;
 });
 
 // Cloud folders and other drives: off by default, opted in one by one.
 ipcMain.handle('drives:list', () => drives.available());
-ipcMain.handle('drives:add', (_e, root) => drives.add(root));
-ipcMain.handle('drives:remove', (_e, root) => drives.remove(root));
+ipcMain.handle('drives:add', (_e, root) => isAbs(root) && drives.add(root));
+ipcMain.handle('drives:remove', (_e, root) => isAbs(root) && drives.remove(root));
 
 ipcMain.handle('fs:pickFolder', async () => {
   const res = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
   return res.canceled ? null : res.filePaths[0];
 });
+
+// Paths from the page are only ever acted on when they are absolute strings.
+// (The page is local and sandboxed, but nothing it sends is trusted blindly.)
+const isAbs = (p) => typeof p === 'string' && p.length > 0 && !p.includes('\0') && path.isAbsolute(p);
+const absList = (paths, max = 10000) => (Array.isArray(paths) && paths.length <= max && paths.every(isAbs) ? paths : null);
+const BAD_PATH = { ok: false, error: 'Not a valid path' };
 
 // Bytes that count towards the free Demolish allowance. Items already in the
 // Trash are free to clear.
@@ -404,6 +413,8 @@ const sum = (sizes, paths) => paths.reduce((n, p) => n + (sizes.get(p) || 0), 0)
 // Moves items to the OS Trash / Recycle Bin (never a permanent delete).
 // Free plan: refuses the whole request if it would pass the allowance.
 ipcMain.handle('fs:trash', async (_e, paths) => {
+  paths = absList(paths);
+  if (!paths || !paths.length) return [{ path: String(paths), ...BAD_PATH }];
   // Never trash a top-level user or system folder (e.g. ~/Pictures, /Applications).
   const guarded = paths.map((p) => [p, protection.check(p)]).filter(([, r]) => r);
   if (guarded.length) return guarded.map(([p, r]) => ({ path: p, ok: false, error: 'protected', name: r.name, contents: r.contents }));
@@ -421,6 +432,7 @@ ipcMain.handle('fs:trash', async (_e, paths) => {
 // Deep Clean duplicates: only trashed after a full byte-for-byte check that
 // the copy we keep is identical and still there.
 ipcMain.handle('fs:trashDuplicate', async (_e, p, keep) => {
+  if (!isAbs(p) || !isAbs(keep)) return [{ path: String(p), ...BAD_PATH }];
   if (!plan.isPro()) return [{ path: p, ok: false, error: 'pro' }];
   if (!(await sameFile(p, keep))) return [{ path: p, ok: false, error: 'Not an exact copy any more, left in place' }];
   const results = await trashPaths([p]);
@@ -456,9 +468,43 @@ async function trashPaths(paths) {
 
 // Empties the contents of a folder (e.g. a cache dir) into the Trash, keeping the folder itself.
 ipcMain.handle('fs:emptyFolder', (_e, dir) => emptyFolder(dir));
+// The Trash / Recycle Bin itself: only the real one, at its real place.
+// Windows: C:\$Recycle.Bin or C:\$Recycle.Bin\<SID>. Mac: ~/.Trash.
+const isRecycleBin = (dir) => WIN && /^[A-Za-z]:\\\$Recycle\.Bin(\\S-1-[\d-]+)?\\?$/i.test(dir);
+async function isMacTrash(dir) {
+  if (process.platform !== 'darwin') return false;
+  try {
+    return (await fsp.realpath(dir)) === path.join(await fsp.realpath(os.homedir()), '.Trash');
+  } catch {
+    return false;
+  }
+}
+// Emptying the Trash is the one permanent delete: the person already deleted
+// these, and moving them "to the Trash" again would free nothing.
+async function emptyMacTrash(dir) {
+  let entries;
+  try {
+    entries = await fsp.readdir(dir);
+  } catch (err) {
+    return [{ path: dir, ok: false, ...friendlyError(err, dir) }];
+  }
+  const results = [];
+  for (const name of entries) {
+    if (name === '.DS_Store' || name === '.localized') continue;
+    const p = path.join(dir, name);
+    try {
+      await fsp.rm(p, { recursive: true, force: true });
+      results.push({ path: p, ok: true });
+    } catch (err) {
+      results.push({ path: p, ok: false, ...friendlyError(err, p) });
+    }
+  }
+  return results.length ? results : [{ path: dir, ok: true }];
+}
 async function emptyFolder(dir) {
-  // Emptying the Recycle Bin is the one permanent delete: the person already deleted these.
-  if (WIN && /[\\/]\$Recycle\.Bin([\\/]|$)/i.test(dir)) return [{ path: dir, ok: await cityhallWin.emptyRecycleBin(dir) }];
+  if (!isAbs(dir)) return [{ path: String(dir), ...BAD_PATH }];
+  if (isRecycleBin(dir)) return [{ path: dir, ok: await cityhallWin.emptyRecycleBin(dir) }];
+  if (await isMacTrash(dir)) return emptyMacTrash(dir);
   const guard = protection.check(dir);
   if (guard && !guard.contents) return [{ path: dir, ok: false, error: 'protected', name: guard.name, contents: false }];
   const block = driveBlock(dir);
@@ -545,8 +591,10 @@ async function weeklyCheckup() {
   if (st.plan !== 'pro' || !st.weekly.enabled || currentScan) return;
   if (Date.now() - (st.weekly.lastRun || 0) < config.weeklyMs) return;
   plan.setWeekly({ lastRun: Date.now() });
+  const controller = new AbortController();
+  currentScan = controller;
   try {
-    const tree = await scan(defaultRoots()[0], { skip: scanSkip });
+    const tree = await scan(defaultRoots()[0], { skip: scanSkip, signal: controller.signal });
     lastTree = tree;
     updateSafe();
     const sweep = await withRecycleBin(sweepOnly(suggestions(tree)));
@@ -559,7 +607,9 @@ async function weeklyCheckup() {
       n.on('click', () => showWindow('clean'));
       n.show();
     }
-  } catch {}
+  } catch {} finally {
+    if (currentScan === controller) currentScan = null;
+  }
 }
 
 function startWeeklyCheckup() {
@@ -749,7 +799,7 @@ ipcMain.handle('photos:cancel', () => {
 // kept, and an exact duplicate goes only if it still matches the keeper byte
 // for byte.
 ipcMain.handle('photos:trash', async (_e, paths) => {
-  const { ok, refused } = photos.planTrash(lastPhotos, paths || []);
+  const { ok, refused } = photos.planTrash(lastPhotos, absList(paths) || []);
   const results = refused.map((r) => ({ ...r, ok: false }));
   const go = [];
   for (const item of ok) {
