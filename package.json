@@ -1,6 +1,6 @@
 {
   "name": "storage-saver",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Keeps your computer's storage low. 3D visualiser of where your space goes, plus safe one-click cleanup.",
   "main": "src/main/main.js",
   "scripts": {
