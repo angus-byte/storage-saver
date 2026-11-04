@@ -72,3 +72,45 @@ test('Safe Clean only offers well-known cache folders, never a person\'s own Log
   const s = suggestions(tree);
   assert.deepEqual(s.caches.items.map((i) => i.path), ['/h/Library/Caches']);
 });
+
+test('a delete updates the scan in place: folders shrink, Trash grows', () => {
+  const { forget, clearDir, addToBin, findBin } = require('../src/main/scanner');
+  const leaf = (p, size, t = 'video') => ({ name: p.split('/').pop(), path: p, size, isDir: false, files: 1, types: { [t]: size } });
+  const tree = {
+    path: '/h', isDir: true, size: 0, files: 0, types: {}, children: [
+      { path: '/h/Movies', name: 'Movies', isDir: true, children: [leaf('/h/Movies/a.mov', 700), leaf('/h/Movies/b.mov', 300)] },
+      { path: '/h/Cache', name: 'Cache', isDir: true, children: [leaf('/h/Cache/x', 50, 'other'), { name: '9 small files', path: '/h/Cache', size: 20, isDir: false, files: 9, aggregate: true, types: { other: 20 } }] },
+      { path: '/h/.Trash', name: '.Trash', isDir: true, children: [leaf('/h/.Trash/old', 100, 'other')] },
+    ],
+  };
+  // Fill in folder totals the way the scanner would.
+  const sumUp = (n) => {
+    if (!n.isDir) return n;
+    n.size = 0; n.files = 0; n.types = {};
+    for (const c of n.children.map(sumUp)) {
+      n.size += c.size; n.files += c.files;
+      for (const [k, v] of Object.entries(c.types)) n.types[k] = (n.types[k] || 0) + v;
+    }
+    return n;
+  };
+  sumUp(tree);
+  assert.strictEqual(tree.size, 1170);
+  assert.strictEqual(findBin(tree).path, '/h/.Trash');
+
+  assert.strictEqual(forget(tree, '/h/Movies/a.mov'), 700);
+  assert.strictEqual(tree.children[0].size, 300);
+  assert.strictEqual(tree.types.video, 300);
+  addToBin(tree, 700);
+  assert.strictEqual(tree.size, 1170, 'still on disk, now in the Trash');
+  assert.strictEqual(findBin(tree).size, 800);
+
+  assert.strictEqual(clearDir(tree, '/h/Cache'), 70);
+  assert.strictEqual(tree.children[1].size, 0);
+  assert.deepStrictEqual(tree.children[1].children, []);
+  assert.strictEqual(tree.size, 1100);
+
+  assert.strictEqual(clearDir(tree, '/h/.Trash'), 800);
+  assert.strictEqual(tree.size, 300);
+  assert.strictEqual(forget(tree, '/h/not/scanned'), 0);
+  assert.strictEqual(forget(tree, '/elsewhere'), 0);
+});

@@ -2933,40 +2933,124 @@ async function demolish(item) {
     mesh.userData.targetH *= Math.max(0.05, 1 - item.size / cat.size);
   }
   await new Promise((r) => setTimeout(r, 450));
-  removeFromTree(item);
-  if (state.disk && state.disk.roots[0]) state.disk.roots[0].free += 0; // Trash still holds the bytes until emptied
-  renderDisk();
   toast(`Demolished ${item.name} (${fmt(item.size)}). Empty the Trash to reclaim the space.`);
-  layout();
+  await applyRemoved(removedFrom(item, res, 'trash'));
 }
 
-function removeFromTree(item) {
-  // Find the chain of folders from the root down to the item's parent.
-  const find = (n, chain) => {
-    const kids = n.children || [];
-    if (kids.includes(item)) return chain.concat(n);
-    for (const c of kids) {
-      const r = c.isDir && find(c, chain.concat(n));
-      if (r) return r;
-    }
-    return null;
+// --- Tree upkeep: apply a delete to the scan in place, no rescan ------------
+// Same rules as forget / clearDir / addToBin in src/main/scanner.js.
+const isUnder = (p, dir) => p.startsWith(dir + '/') || p.startsWith(dir + '\\');
+function chainTo(p) {
+  const tree = state.tree;
+  if (!tree || !p || !(tree.path === p || isUnder(p, tree.path))) return null;
+  const chain = [tree];
+  for (let n = tree; n.path !== p; ) {
+    n = (n.children || []).find((c) => !c.aggregate && (c.path === p || (c.isDir && isUnder(p, c.path))));
+    if (!n) break;
+    chain.push(n);
+  }
+  return chain;
+}
+function shrink(chain, node) {
+  for (const a of chain) {
+    a.size = Math.max(0, a.size - node.size);
+    a.files = Math.max(0, (a.files || 0) - (node.files || 0));
+    if (a.types && node.types) for (const [k, v] of Object.entries(node.types)) if (a.types[k]) a.types[k] = Math.max(0, a.types[k] - v);
+  }
+}
+// Takes the item at `p` out of the tree; returns the bytes it held.
+function forgetPath(p) {
+  const chain = chainTo(p);
+  if (!chain || chain.length < 2 || chain[chain.length - 1].path !== p) return 0;
+  const node = chain.pop();
+  const parent = chain[chain.length - 1];
+  parent.children.splice(parent.children.indexOf(node), 1);
+  shrink(chain, node);
+  return node.size;
+}
+// Empties a folder in the tree, keeping the folder; returns the bytes it held.
+function clearPath(dir) {
+  const chain = chainTo(dir);
+  if (!chain || chain[chain.length - 1].path !== dir) return 0;
+  const last = chain[chain.length - 1];
+  const node = { ...last, types: { ...(last.types || {}) } };
+  shrink(chain, node);
+  last.children = [];
+  return node.size;
+}
+// Things moved to the Trash still take space there until it's emptied, so the
+// Trash building (and Safe Clean's Trash line) grows by what was moved.
+function addToBin(bytes) {
+  if (!(bytes > 0) || !state.tree) return;
+  const bins = [];
+  const walk = (n) => {
+    if (n.isDir && isBin(n.path)) bins.push(n);
+    else (n.children || []).forEach(walk);
   };
-  const chain = find(state.tree, []);
-  if (!chain) return;
-  const n = chain[chain.length - 1];
-  n.children.splice(n.children.indexOf(item), 1);
-  for (const anc of chain) {
-    anc.size -= item.size;
-    anc.files -= item.files || 0;
-  }
-  if (state.suggestions) {
-    for (const g of [...Object.values(state.suggestions), ...Object.values(state.deep || {})]) {
-      const before = g.items.length;
-      g.items = g.items.filter((i) => i.path !== item.path && !i.path.startsWith(item.path + '/') && !i.path.startsWith(item.path + '\\'));
-      if (g.items.length !== before) g.total = g.items.reduce((s, i) => s + i.size, 0);
+  walk(state.tree);
+  const bin = bins.sort((a, b) => a.path.length - b.path.length)[0];
+  if (bin) {
+    for (const a of chainTo(bin.path)) {
+      a.size += bytes;
+      if (a.types) a.types.other = (a.types.other || 0) + bytes;
     }
-    renderClean();
+    bin.children = bin.children || [];
+    let lot = bin.children.find((c) => c.aggregate && c.moved);
+    if (!lot) bin.children.push((lot = { name: 'Moved here by Gigapolis', path: bin.path, size: 0, isDir: false, kind: 'trash', mtime: Date.now(), files: 0, aggregate: true, moved: true, types: {} }));
+    lot.size += bytes;
+    lot.types.other = (lot.types.other || 0) + bytes;
+    bin.children.sort((a, b) => b.size - a.size);
   }
+  const g = state.suggestions && state.suggestions.trash;
+  if (!g) return;
+  const it = bin ? g.items.find((i) => i.path === bin.path) : g.items.find((i) => isBin(i.path) && !/^[A-Za-z]:\\/.test(i.path));
+  if (it) it.size += bytes;
+  else if (bin) g.items.push({ name: bin.name, path: bin.path, size: bytes, kind: 'trash', mtime: Date.now(), isDir: true });
+  g.total = g.items.reduce((n, i) => n + i.size, 0);
+}
+// Drops gone paths from Street Sweep and Deep Clean lists. `cleared` folders
+// stay on disk but are now empty, so they leave the lists too.
+function pruneLists(gone) {
+  if (!gone.length) return;
+  const hit = (p) => gone.some((g) => p === g || isUnder(p, g));
+  for (const g of [...Object.values(state.suggestions || {}), ...Object.values(state.deep || {})]) {
+    if (!g || !g.items) continue;
+    const before = g.items.length;
+    g.items = g.items.filter((i) => !hit(i.path));
+    if (g.items.length !== before) g.total = g.items.reduce((s, i) => s + i.size, 0);
+  }
+}
+// Applies finished deletes. Each entry: { path, mode } where mode is 'trash'
+// (moved to the Trash), 'gone' (deleted for good, from inside the Trash),
+// 'clear' (folder emptied into the Trash, kept) or 'bin' (Trash emptied).
+async function applyRemoved(done) {
+  if (!state.tree || !done.length) return;
+  let forGood = 0;
+  // In order: a Safe Clean moves caches into the Trash, then empties it.
+  for (const d of done) {
+    const bytes = d.mode === 'trash' || d.mode === 'gone' ? forgetPath(d.path) : clearPath(d.path);
+    pruneLists([d.path]);
+    if (d.mode === 'trash' || d.mode === 'clear') addToBin(bytes);
+    else forGood += bytes;
+  }
+  if (DEMO) {
+    if (forGood && state.disk && state.disk.roots[0]) state.disk.roots[0].free += forGood;
+  } else {
+    state.disk = await api.diskInfo().catch(() => state.disk);
+  }
+  renderDisk();
+  renderClean();
+  layout();
+}
+// Turns one delete's results into what applyRemoved needs.
+function removedFrom(item, res, mode) {
+  const ok = res.filter((r) => r.ok);
+  if (!ok.length) return [];
+  if (mode === 'trash') return ok.map((r) => ({ path: r.path, mode: 'trash' }));
+  const bin = isBin(item.path);
+  // Whole folder emptied: clear it. Partly: drop just the items that went.
+  if (ok.length === res.length) return [{ path: item.path, mode: bin ? 'bin' : 'clear' }];
+  return ok.map((r) => ({ path: r.path, mode: bin ? 'gone' : 'trash' }));
 }
 
 // ---------------------------------------------------------------------------
@@ -3047,7 +3131,7 @@ async function clearContents(item) {
   if (bad.length && bad.length === res.length) return trashError(bad[0]);
   if (isBin(item.path)) toast(`Emptied the Trash${bad.length ? ` · ${bad.length} item${bad.length > 1 ? 's' : ''} couldn't be removed` : ''}. ${fmt(item.size)} freed.`);
   else toast(`Moved the contents of ${item.name} to Trash${bad.length ? ` · ${bad.length} couldn't be moved` : ''}. Empty the Trash to reclaim the space.`);
-  await runScan(state.tree ? state.tree.path : null);
+  await applyRemoved(removedFrom(item, res, 'empty'));
 }
 function trashError(r) {
   if (r.error === 'drive') return toast(r.message);
@@ -3293,6 +3377,7 @@ async function moveToTrash(items) {
   let emptied = 0; // removed from the Trash for good
   let failed = 0;
   let capped = null;
+  const done = [];
   for (const it of items) {
     const res = it.mode === 'dup' ? await api.trashDuplicate(it.path, it.keep) : it.mode === 'empty' ? await api.emptyFolder(it.path) : await api.trash([it.path]);
     const cap = res.find((r) => r.error === 'cap');
@@ -3300,6 +3385,7 @@ async function moveToTrash(items) {
       capped = capped || cap; // over the free allowance: skip it, smaller items may still fit
       continue;
     }
+    done.push(...removedFrom(it, res, it.mode === 'empty' ? 'empty' : 'trash'));
     if (!res.every((r) => r.ok)) failed += 1;
     else if (isBin(it.path)) emptied += it.size;
     else freed += it.size;
@@ -3315,7 +3401,7 @@ async function moveToTrash(items) {
   if (emptied) parts.push(`emptied ${fmt(emptied)} from the Trash`);
   if (!parts.length) parts.push('Nothing moved');
   toast(`${parts.join(' and ')}${failed ? ` · ${failed} failed` : ''}${capped ? ' · free limit reached' : ''}.${freed ? ' Empty the Trash to reclaim the space.' : ''}`);
-  await runScan(state.tree ? state.tree.path : null);
+  await applyRemoved(done);
 }
 
 // ---------------------------------------------------------------------------
