@@ -1,7 +1,7 @@
 // Hand-made landmark buildings shipped as glTF (.glb) models. The .glb files
 // live in assets/models and are embedded as base64 modules by
 // scripts/embed-models.js, so nothing is fetched at runtime.
-// Each model is merged into two meshes (body + glass) for speed, turned to
+// Each model is merged into up to three meshes (body, glass, neon) for speed, turned to
 // Y-up (the files are Z-up), centred, and sat on y = 0 with its front on +z.
 import * as THREE from './vendor/three.module.js';
 import { GLTFLoader } from './vendor/GLTFLoader.js';
@@ -9,15 +9,33 @@ import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { ART_DECO_TOWER_GLB } from './models/art-deco-tower.js';
 import { DOMED_STATION_GLB } from './models/domed-station.js';
 import { APARTMENT_DETAILED_GLB } from './models/apartment-detailed.js';
+import { FILM_SOUNDSTAGE_GLB } from './models/film-soundstage.js';
+import { NEON_GUITAR_TOWER_GLB } from './models/neon-guitar-tower.js';
+import { MARKET_SQUARE_GLB } from './models/market-square.js';
+import { CLASSICAL_LIBRARY_GLB } from './models/classical-library.js';
 
-// Category id -> model. Glass parts (matched by node name) glow at night.
-export const MODEL_FOR_CATEGORY = { apps: 'decoTower', documents: 'domedStation', downloads: 'apartment' };
+// Category id -> model. Parts are picked by node name: `glass` windows glow
+// warm at night, `neon` signs and bulbs glow in their own colour.
+export const MODEL_FOR_CATEGORY = {
+  apps: 'decoTower',
+  documents: 'domedStation',
+  downloads: 'apartment',
+  video: 'soundstage',
+  photos: 'soundstage',
+  music: 'guitarTower',
+  desktop: 'marketSquare',
+  library: 'library',
+};
 const SOURCES = {
   decoTower: { b64: ART_DECO_TOWER_GLB, glass: /glazing|glazed window|glass|lamp head|lamp glow/i },
   domedStation: { b64: DOMED_STATION_GLB, glass: /glazing|glazed bay|window pane|lamp globe|lantern glow|side window -?\d/i },
   apartment: { b64: APARTMENT_DETAILED_GLB, glass: /glazed window|window glass|ground floor window|entrance glazing|warm lobby|streetlight globe|wall lantern/i },
+  soundstage: { b64: FILM_SOUNDSTAGE_GLB, glass: /glazing|glazed|stage side window|tall window|lamp light/i, neon: /marquee lighting|illuminated marquee|luminous lens/i },
+  guitarTower: { b64: NEON_GUITAR_TOWER_GLB, glass: /glazing|amber glow|side window|glass door|lamp glowing bulb/i, neon: /neon|illuminated|marquee bulb/i },
+  library: { b64: CLASSICAL_LIBRARY_GLB, glass: /window glass|^(side|rear) window \d+$|lamp lantern/i },
+  marketSquare: { b64: MARKET_SQUARE_GLB, glass: /glazing|warm glass|^window$|^window \d/i, neon: /string light|lamp globe/i },
 };
-const GLASS_EXCLUDE = /trim|mullion|transom|jamb|sill|frame|housing/i;
+const GLASS_EXCLUDE = /trim|mullion|transom|jamb|sill|frame|housing|backing|divider|window top|lintel/i;
 
 const _c = new THREE.Color();
 function prep(mesh) {
@@ -47,20 +65,22 @@ async function gunzip(b64) {
   return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
 }
 
-async function loadOne({ b64, glass }) {
+async function loadOne({ b64, glass, neon }) {
   const gltf = await new GLTFLoader().parseAsync(await gunzip(b64), '');
   gltf.scene.updateMatrixWorld(true);
   const body = [];
   const glow = [];
+  const lit = [];
   gltf.scene.traverse((o) => {
     if (!o.isMesh) return;
     // Original node name (three sanitises o.name); underscores read as spaces.
     const name = (o.userData.name || o.name || (o.parent && (o.parent.userData.name || o.parent.name)) || '').replace(/_/g, ' ');
-    (glass.test(name) && !GLASS_EXCLUDE.test(name) ? glow : body).push(prep(o));
+    const skip = GLASS_EXCLUDE.test(name);
+    (neon && neon.test(name) && !skip ? lit : glass.test(name) && !skip ? glow : body).push(prep(o));
   });
   if (!body.length) throw new Error('model has no meshes');
   const merge = (list) => (list.length ? mergeGeometries(list) : null);
-  const parts = { body: merge(body), glass: merge(glow) };
+  const parts = { body: merge(body), glass: merge(glow), neon: merge(lit) };
   // Z-up -> Y-up (front, at -y in the file, ends up facing +z), then centre.
   const box = new THREE.Box3();
   for (const g of Object.values(parts)) if (g) g.rotateX(-Math.PI / 2);

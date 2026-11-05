@@ -983,6 +983,12 @@ function placeBuilding(r, depth, gap) {
 // demolish behaviour; the model follows that box's height every frame.
 const modelGlassMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.25, metalness: 0.3, emissive: 0xffc977, emissiveIntensity: 0 });
 modelGlassMat.userData = { dayI: 0, nightI: 1.3, th: 0.5 };
+// Neon signs and bulbs glow in their own (vertex) colour, a little even by day.
+const modelNeonMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, emissive: 0xffffff, emissiveIntensity: 0.3 });
+modelNeonMat.userData = { dayI: 0.3, nightI: 1.8, th: 0.45 };
+modelNeonMat.onBeforeCompile = (sh) => {
+  sh.fragmentShader = sh.fragmentShader.replace('vec3 totalEmissiveRadiance = emissive;', 'vec3 totalEmissiveRadiance = emissive * vColor.rgb;');
+};
 function placeModel(r, item, w, h, d, depth) {
   const model = landmarkModels[MODEL_FOR_CATEGORY[item.category]];
   const s = Math.min(w / model.w, d / model.d);
@@ -1012,6 +1018,11 @@ function placeModel(r, item, w, h, d, depth) {
     glass.receiveShadow = true;
     g.add(glass);
     extras.push(glass); // so day/night lights its windows
+  }
+  if (model.neon) {
+    const neon = new THREE.Mesh(model.neon, modelNeonMat);
+    g.add(neon);
+    extras.push(neon);
   }
   g.scale.set(s, 0.001, s);
   b.userData.model = { group: g, sy, h: H };
