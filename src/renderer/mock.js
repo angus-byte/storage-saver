@@ -83,6 +83,12 @@ export function mockTree() {
       small(90, 400 * MB, 'other'),
     ], p),
     (p) => dir('Music', 'media', [small(4000, 18 * GB, 'media')], p),
+    (p) => dir('Applications', 'other', [
+      (q) => dir('Final Cut Pro.app', 'other', [small(9000, 6.2 * GB, 'other')], q),
+      (q) => dir('DaVinci Resolve.app', 'other', [small(7000, 4.8 * GB, 'other')], q),
+      (q) => dir('Logic Pro.app', 'other', [small(6000, 3.4 * GB, 'other')], q),
+      small(20000, 9 * GB, 'other'),
+    ], p),
     (p) => dir('.Trash', 'trash', [small(120, 5.5 * GB, 'trash')], p),
     // Loose folders with no well-known name: grouped by what is inside them.
     (p) => dir('Client Work 2024', 'other', [

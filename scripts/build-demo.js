@@ -26,7 +26,21 @@ app = app
   .replace("import { initPro, demoPlanApi, mockDeep } from './pro.js';\n", '')
   .replace("import { initSeasons } from './seasons.js';\n", '')
   .replace("import { localizeDom, IS_WIN } from './platform.js';\n", '')
-  .replace("import { initDrives } from './drives.js';\n", '');
+  .replace("import { initDrives } from './drives.js';\n", '')
+  .replace("import { loadLandmarkModels, MODEL_FOR_CATEGORY } from './models.js';\n", '');
+// glTF landmark models: the base64 data and the loader, with its imports
+// pointed at the CDN copies of the three.js add-ons.
+const modelData = fs
+  .readdirSync(path.join(root, 'src', 'renderer', 'models'))
+  .filter((f) => f.endsWith('.js'))
+  .map((f) => r(`models/${f}`).replace(/^export /gm, ''))
+  .join('\n');
+const modelsJs = r('models.js')
+  .replace("import * as THREE from './vendor/three.module.js';\n", '')
+  .replace("from './vendor/GLTFLoader.js'", "from 'three/addons/loaders/GLTFLoader.js'")
+  .replace("from './vendor/BufferGeometryUtils.js'", "from 'three/addons/utils/BufferGeometryUtils.js'")
+  .replace(/^import \{ [A-Z_]+ \} from '\.\/models\/[^']+';\n/gm, '')
+  .replace(/^export /gm, '');
 
 html = html
   .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\n/, '')
@@ -35,7 +49,7 @@ html = html
     /<title>[^<]*<\/title>/,
     (t) => `${t}\n  <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@${THREE_VER}/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@${THREE_VER}/examples/jsm/" } }</script>`
   )
-  .replace('<script type="module" src="app.js"></script>', `<script type="module">\n${treemap}\n${categoriesJs}\n${mock}\n${pro}\n${seasonsJs}\n${drivesJs}\n${app}\n</script>`);
+  .replace('<script type="module" src="app.js"></script>', `<script type="module">\n${treemap}\n${categoriesJs}\n${mock}\n${pro}\n${seasonsJs}\n${drivesJs}\n${modelData}\n${modelsJs}\n${app}\n</script>`);
 
 fs.mkdirSync(path.join(root, 'demo'), { recursive: true });
 // City Hall tab (apps + startup items): inlined ahead of the app code.

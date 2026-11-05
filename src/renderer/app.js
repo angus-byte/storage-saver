@@ -12,6 +12,10 @@ import { initPro, demoPlanApi, mockDeep } from './pro.js';
 import { initSeasons } from './seasons.js';
 import { localizeDom, IS_WIN } from './platform.js';
 import { initDrives } from './drives.js';
+import { loadLandmarkModels, MODEL_FOR_CATEGORY } from './models.js';
+
+// Hand-made glTF landmarks (see models.js); empty if they fail to load.
+const landmarkModels = await loadLandmarkModels().catch(() => ({}));
 
 localizeDom();
 
@@ -937,6 +941,7 @@ function placeBuilding(r, depth, gap) {
   if (w < 0.6 || d < 0.6) return 0;
   let h = heightFor(item.size);
   const landmark = landmarkFor(item);
+  if (landmark === 'model') return placeModel(r, item, w, h, d, depth);
   if (landmark === 'library') h = Math.min(h, 17);
   if (LANDMARK_MAX_H[landmark]) h = Math.min(h, LANDMARK_MAX_H[landmark]);
   const plain = { library: 0xe9e2d0, tip: 0x7a6a58, studio: 0xd8cfbe, market: 0xd8d2c6 };
@@ -972,6 +977,73 @@ function placeBuilding(r, depth, gap) {
   b.userData.footprint = { x: b.position.x, z: b.position.z, w, d };
   return h;
 }
+// A hand-made glTF landmark: the model is scaled to fill the lot, with its
+// height following the category's size (within limits, so it keeps its
+// shape). An invisible box carries the usual click, hover, build and
+// demolish behaviour; the model follows that box's height every frame.
+const modelGlassMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.25, metalness: 0.3, emissive: 0xffc977, emissiveIntensity: 0 });
+modelGlassMat.userData = { dayI: 0, nightI: 1.3, th: 0.5 };
+const modelBodyShared = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
+const modelSmokeMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, transparent: true, opacity: 0.88, depthWrite: false });
+// Neon signs and bulbs glow in their own (vertex) colour, a little even by day.
+const modelNeonMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, emissive: 0xffffff, emissiveIntensity: 0.3 });
+modelNeonMat.userData = { dayI: 0.3, nightI: 1.8, th: 0.45 };
+modelNeonMat.onBeforeCompile = (sh) => {
+  sh.fragmentShader = sh.fragmentShader.replace('vec3 totalEmissiveRadiance = emissive;', 'vec3 totalEmissiveRadiance = emissive * vColor.rgb;');
+};
+function placeModel(r, item, w, h, d, depth) {
+  const model = landmarkModels[MODEL_FOR_CATEGORY[item.category]];
+  const s = Math.min(w / model.w, d / model.d);
+  const sy = Math.min(s * 1.5, Math.max(s * 0.75, h / model.h));
+  const H = model.h * sy;
+  const x = r.x + r.w / 2;
+  const z = r.y + r.h / 2;
+  // Slightly below white so hover (which lightens the colour) still shows.
+  const bodyMat = new THREE.MeshStandardMaterial({ vertexColors: true, color: 0xe6e6e6, roughness: 0.8 });
+  const b = new THREE.Mesh(boxGeo, bodyMat);
+  b.visible = false; // still picked by the raycaster
+  b.position.set(x, 1.1, z);
+  b.scale.set(model.w * s, 0.001, model.d * s);
+  const delay = ((x + z + BASE_W / 2 + BASE_D / 2) / (BASE_W + BASE_D)) * 0.7 + Math.random() * 0.25;
+  b.userData = { item, targetH: H, depth, style: null, build: { t: -delay, dur: 0.7 + Math.min(0.6, H / 60) }, pieces: [] };
+  blocks.add(b);
+  meshes.push(b);
+  activeBuilding = b;
+  const g = addGroup(x, 1.1, z);
+  activeBuilding = null;
+  const body = new THREE.Mesh(model.body, bodyMat);
+  body.castShadow = true;
+  body.receiveShadow = true;
+  g.add(body);
+  if (model.glass) {
+    const glass = new THREE.Mesh(model.glass, modelGlassMat);
+    glass.receiveShadow = true;
+    g.add(glass);
+    extras.push(glass); // so day/night lights its windows
+  }
+  if (model.smoke) {
+    // The modelled plume sways and breathes so the chimney looks alive.
+    const smoke = new THREE.Mesh(model.smoke, modelSmokeMat);
+    smoke.position.copy(model.smokeAt);
+    g.add(smoke);
+    landmarkAnims.push({ kind: 'modelSmoke', m: smoke, phase: Math.random() * 6.28 });
+  }
+  if (model.spin) {
+    // Gulls circle the model's centre, bobbing as they go.
+    const birds = new THREE.Mesh(model.spin, modelBodyShared);
+    g.add(birds);
+    landmarkAnims.push({ kind: 'modelSpin', m: birds, phase: Math.random() * 6.28 });
+  }
+  if (model.neon) {
+    const neon = new THREE.Mesh(model.neon, modelNeonMat);
+    g.add(neon);
+    extras.push(neon);
+  }
+  g.scale.set(s, 0.001, s);
+  b.userData.model = { group: g, sy, h: H };
+  b.userData.footprint = { x, z, w: model.w * s, d: model.d * s };
+  return H;
+}
 let activeBuilding = null;
 const easeOutBack = (p) => 1 + 2.70158 * Math.pow(p - 1, 3) + 1.70158 * Math.pow(p - 1, 2);
 
@@ -1000,6 +1072,7 @@ function piece(geo, mat, x, y, z, sx, sy, sz, shadow = true) {
 // Folders with a well-known role get a landmark instead of a generic tower.
 const CATEGORY_LANDMARK = { video: 'studio', photos: 'studio', music: 'music', trash: 'tip', system: 'factory', downloads: 'apartments', desktop: 'market', library: 'library' };
 function landmarkFor(item) {
+  if (item.category && landmarkModels[MODEL_FOR_CATEGORY[item.category]]) return 'model';
   if (item.category) return CATEGORY_LANDMARK[item.category] || null;
   const n = (item.name || '').toLowerCase();
   if (item.virtual && item.kind === 'system') return 'factory';
@@ -1327,6 +1400,17 @@ function decorateMarket(b, w, h, d) {
 
 function stepLandmarks(dt, t) {
   for (const a of landmarkAnims) {
+    if (a.kind === 'modelSpin') {
+      a.m.rotation.y = t * 0.35 + a.phase;
+      a.m.position.y = Math.sin(t * 1.6 + a.phase) * 0.3;
+      continue;
+    }
+    if (a.kind === 'modelSmoke') {
+      a.m.rotation.y = Math.sin(t * 0.22 + a.phase) * 0.7;
+      const k = 1 + 0.07 * Math.sin(t * 1.3 + a.phase);
+      a.m.scale.set(k, 1 + 0.05 * Math.sin(t * 0.9 + a.phase), k);
+      continue;
+    }
     if (a.kind === 'truck') {
       a.s += a.speed * dt;
       pointAt(a.loop, a.s, _pt);
@@ -3160,6 +3244,8 @@ function animate() {
     } else if (Math.abs(m.scale.y - th) > 0.01) {
       m.scale.y += (th - m.scale.y) * Math.min(1, dt * 7);
     }
+    const md = m.userData.model;
+    if (md) md.group.scale.y = (md.sy * m.scale.y) / md.h;
   }
   if (!state.scanning) updateHover();
   renderer.render(scene, camera);
