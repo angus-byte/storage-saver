@@ -983,6 +983,7 @@ function placeBuilding(r, depth, gap) {
 // demolish behaviour; the model follows that box's height every frame.
 const modelGlassMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.25, metalness: 0.3, emissive: 0xffc977, emissiveIntensity: 0 });
 modelGlassMat.userData = { dayI: 0, nightI: 1.3, th: 0.5 };
+const modelSmokeMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, transparent: true, opacity: 0.88, depthWrite: false });
 // Neon signs and bulbs glow in their own (vertex) colour, a little even by day.
 const modelNeonMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, emissive: 0xffffff, emissiveIntensity: 0.3 });
 modelNeonMat.userData = { dayI: 0.3, nightI: 1.8, th: 0.45 };
@@ -1018,6 +1019,13 @@ function placeModel(r, item, w, h, d, depth) {
     glass.receiveShadow = true;
     g.add(glass);
     extras.push(glass); // so day/night lights its windows
+  }
+  if (model.smoke) {
+    // The modelled plume sways and breathes so the chimney looks alive.
+    const smoke = new THREE.Mesh(model.smoke, modelSmokeMat);
+    smoke.position.copy(model.smokeAt);
+    g.add(smoke);
+    landmarkAnims.push({ kind: 'modelSmoke', m: smoke, phase: Math.random() * 6.28 });
   }
   if (model.neon) {
     const neon = new THREE.Mesh(model.neon, modelNeonMat);
@@ -1385,6 +1393,12 @@ function decorateMarket(b, w, h, d) {
 
 function stepLandmarks(dt, t) {
   for (const a of landmarkAnims) {
+    if (a.kind === 'modelSmoke') {
+      a.m.rotation.y = Math.sin(t * 0.22 + a.phase) * 0.7;
+      const k = 1 + 0.07 * Math.sin(t * 1.3 + a.phase);
+      a.m.scale.set(k, 1 + 0.05 * Math.sin(t * 0.9 + a.phase), k);
+      continue;
+    }
     if (a.kind === 'truck') {
       a.s += a.speed * dt;
       pointAt(a.loop, a.s, _pt);

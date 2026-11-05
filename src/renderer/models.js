@@ -13,6 +13,7 @@ import { FILM_SOUNDSTAGE_GLB } from './models/film-soundstage.js';
 import { NEON_GUITAR_TOWER_GLB } from './models/neon-guitar-tower.js';
 import { MARKET_SQUARE_GLB } from './models/market-square.js';
 import { CLASSICAL_LIBRARY_GLB } from './models/classical-library.js';
+import { FACTORY_GLB } from './models/factory.js';
 
 // Category id -> model. Parts are picked by node name: `glass` windows glow
 // warm at night, `neon` signs and bulbs glow in their own colour.
@@ -25,6 +26,7 @@ export const MODEL_FOR_CATEGORY = {
   music: 'guitarTower',
   desktop: 'marketSquare',
   library: 'library',
+  system: 'factory',
 };
 const SOURCES = {
   decoTower: { b64: ART_DECO_TOWER_GLB, glass: /glazing|glazed window|glass|lamp head|lamp glow/i },
@@ -33,6 +35,8 @@ const SOURCES = {
   soundstage: { b64: FILM_SOUNDSTAGE_GLB, glass: /glazing|glazed|stage side window|tall window|lamp light/i, neon: /marquee lighting|illuminated marquee|luminous lens/i },
   guitarTower: { b64: NEON_GUITAR_TOWER_GLB, glass: /glazing|amber glow|side window|glass door|lamp glowing bulb/i, neon: /neon|illuminated|marquee bulb/i },
   library: { b64: CLASSICAL_LIBRARY_GLB, glass: /window glass|^(side|rear) window \d+$|lamp lantern/i },
+  // Smoke is split out so the city can make it drift (see placeModel).
+  factory: { b64: FACTORY_GLB, glass: /warm glass|lamp globe/i, smoke: /smoke cloud/i },
   marketSquare: { b64: MARKET_SQUARE_GLB, glass: /glazing|warm glass|^window$|^window \d/i, neon: /string light|lamp globe/i },
 };
 const GLASS_EXCLUDE = /trim|mullion|transom|jamb|sill|frame|housing|backing|divider|window top|lintel/i;
@@ -65,22 +69,23 @@ async function gunzip(b64) {
   return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
 }
 
-async function loadOne({ b64, glass, neon }) {
+async function loadOne({ b64, glass, neon, smoke }) {
   const gltf = await new GLTFLoader().parseAsync(await gunzip(b64), '');
   gltf.scene.updateMatrixWorld(true);
   const body = [];
   const glow = [];
   const lit = [];
+  const puffs = [];
   gltf.scene.traverse((o) => {
     if (!o.isMesh) return;
     // Original node name (three sanitises o.name); underscores read as spaces.
     const name = (o.userData.name || o.name || (o.parent && (o.parent.userData.name || o.parent.name)) || '').replace(/_/g, ' ');
     const skip = GLASS_EXCLUDE.test(name);
-    (neon && neon.test(name) && !skip ? lit : glass.test(name) && !skip ? glow : body).push(prep(o));
+    (smoke && smoke.test(name) ? puffs : neon && neon.test(name) && !skip ? lit : glass.test(name) && !skip ? glow : body).push(prep(o));
   });
   if (!body.length) throw new Error('model has no meshes');
   const merge = (list) => (list.length ? mergeGeometries(list) : null);
-  const parts = { body: merge(body), glass: merge(glow), neon: merge(lit) };
+  const parts = { body: merge(body), glass: merge(glow), neon: merge(lit), smoke: merge(puffs) };
   // Z-up -> Y-up (front, at -y in the file, ends up facing +z), then centre.
   const box = new THREE.Box3();
   for (const g of Object.values(parts)) if (g) g.rotateX(-Math.PI / 2);
@@ -88,7 +93,16 @@ async function loadOne({ b64, glass, neon }) {
   const c = box.getCenter(new THREE.Vector3());
   for (const g of Object.values(parts)) if (g) g.translate(-c.x, -box.min.y, -c.z);
   const size = box.getSize(new THREE.Vector3());
-  return { ...parts, w: size.x, h: size.y, d: size.z };
+  // Smoke pivots on the chimney mouth: the bottom centre of the plume.
+  let smokeAt = null;
+  if (parts.smoke) {
+    parts.smoke.computeBoundingBox();
+    const sb = parts.smoke.boundingBox;
+    smokeAt = new THREE.Vector3((sb.min.x + sb.max.x) / 2, sb.min.y, (sb.min.z + sb.max.z) / 2);
+    smokeAt.x = sb.min.x + 0.6; // the plume leans downwind; its root is at the low end
+    parts.smoke.translate(-smokeAt.x, -smokeAt.y, -smokeAt.z);
+  }
+  return { ...parts, smokeAt, w: size.x, h: size.y, d: size.z };
 }
 
 // Resolves to { decoTower: {...}, domedStation: {...} }; a model that fails to
