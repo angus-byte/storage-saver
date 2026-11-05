@@ -19,7 +19,6 @@ const protection = createProtection();
 const { createDrives, driveMessage } = require('./drives');
 const { createMonitor } = require('./perf');
 const { createMaintenance } = require('./maintenance');
-const { createSysSpace } = require('./sysspace');
 let drives = createDrives(); // reloaded with the saved opt-ins once userData is known
 const driveBlock = (p) => {
   const c = drives.blocked(p);
@@ -908,15 +907,4 @@ app.on('will-quit', () => monitor && monitor.stop());
 let maintenance = null;
 const getMaintenance = () => (maintenance ||= createMaintenance({ dir: app.getPath('userData') }));
 ipcMain.handle('maint:list', () => getMaintenance().list());
-// "System & other users" breakdown: measures only, never deletes.
-let sysSpace = null;
-ipcMain.handle('sys:space', async (_e, scanRoot) => {
-  sysSpace ||= createSysSpace();
-  let free = 0;
-  try {
-    const st = await fsp.statfs(defaultRoots()[0]);
-    free = st.bavail * st.bsize;
-  } catch {}
-  return sysSpace.measure({ scanRoot: isAbs(scanRoot) ? scanRoot : os.homedir(), free });
-});
 ipcMain.handle('maint:run', (_e, ids) => getMaintenance().run(Array.isArray(ids) ? ids.slice(0, 20).map(String) : []));

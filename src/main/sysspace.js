@@ -8,7 +8,7 @@
 // plus anything Gigapolis can't read; the page shows that as the remainder.
 const fs = require('fs');
 const os = require('os');
-const path = require('path');
+const path = require('path').posix; // macOS paths, also when tests run on Windows
 const { execFile } = require('child_process');
 
 const MB = 1024 * 1024;
