@@ -17,11 +17,17 @@ import { FACTORY_GLB } from './models/factory.js';
 import { RUBBISH_TIP_GLB } from './models/rubbish-tip.js';
 import { SAND_TOWER_GLB } from './models/sand-tower.js';
 import { PALE_GREY_TOWER_GLB } from './models/pale-grey-tower.js';
+import { TECH_LAB_GLB } from './models/tech-lab.js';
+import { POST_OFFICE_GLB } from './models/post-office.js';
+import { CONTAINER_WAREHOUSE_GLB } from './models/container-warehouse.js';
 
 // Category id -> model. Parts are picked by node name: `glass` windows glow
 // warm at night, `neon` signs and bulbs glow in their own colour.
 export const MODEL_FOR_CATEGORY = {
   apps: 'paleGreyTower',
+  dev: 'techLab',
+  mail: 'postOffice',
+  archives: 'warehouse',
   backups: 'decoTower',
   documents: 'sandTower',
   cloud: 'domedStation',
@@ -48,6 +54,10 @@ const SOURCES = {
   rubbishTip: { b64: RUBBISH_TIP_GLB, glass: /office window|windscreen|cab side window|headlamp|lamp head/i, spin: /^gull /i },
   sandTower: { b64: SAND_TOWER_GLB, glass: /window glass|entry glazing|lamp globe|roof skylight/i },
   paleGreyTower: { b64: PALE_GREY_TOWER_GLB, glass: /(front|side) window [\d -]+$|glass door|lamp globe/i },
+  // Monitors, displays, sign and beacons glow in their own colour.
+  techLab: { b64: TECH_LAB_GLB, glass: /front glass panel|side window|side glow|penthouse vertical glazing|entrance glass atrium|entry door glow|streetlight globe/i, neon: /glowing monitor|monitor status bar|glowing display|display interface line|sign light segment|antenna beacon/i },
+  postOffice: { b64: POST_OFFICE_GLB, glass: /recessed window|side window|double glass doors|lamp globe|headlamp|clock dial/i },
+  warehouse: { b64: CONTAINER_WAREHOUSE_GLB, glass: /clerestory window|street lamp head|forklift windshield/i },
   marketSquare: { b64: MARKET_SQUARE_GLB, glass: /glazing|warm glass|^window$|^window \d/i, neon: /string light|lamp globe/i },
 };
 const GLASS_EXCLUDE = /trim|mullion|transom|jamb|sill|frame|housing|backing|divider|window top|lintel/i;
