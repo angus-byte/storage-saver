@@ -14,12 +14,15 @@ import { NEON_GUITAR_TOWER_GLB } from './models/neon-guitar-tower.js';
 import { MARKET_SQUARE_GLB } from './models/market-square.js';
 import { CLASSICAL_LIBRARY_GLB } from './models/classical-library.js';
 import { FACTORY_GLB } from './models/factory.js';
+import { RUBBISH_TIP_GLB } from './models/rubbish-tip.js';
+import { SAND_TOWER_GLB } from './models/sand-tower.js';
 
 // Category id -> model. Parts are picked by node name: `glass` windows glow
 // warm at night, `neon` signs and bulbs glow in their own colour.
 export const MODEL_FOR_CATEGORY = {
   apps: 'decoTower',
-  documents: 'domedStation',
+  documents: 'sandTower',
+  cloud: 'domedStation',
   downloads: 'apartment',
   video: 'soundstage',
   photos: 'soundstage',
@@ -27,6 +30,8 @@ export const MODEL_FOR_CATEGORY = {
   desktop: 'marketSquare',
   library: 'library',
   system: 'factory',
+  sysother: 'factory', // the "System & other users" building
+  trash: 'rubbishTip',
 };
 const SOURCES = {
   decoTower: { b64: ART_DECO_TOWER_GLB, glass: /glazing|glazed window|glass|lamp head|lamp glow/i },
@@ -37,6 +42,9 @@ const SOURCES = {
   library: { b64: CLASSICAL_LIBRARY_GLB, glass: /window glass|^(side|rear) window \d+$|lamp lantern/i },
   // Smoke is split out so the city can make it drift (see placeModel).
   factory: { b64: FACTORY_GLB, glass: /warm glass|lamp globe/i, smoke: /smoke cloud/i },
+  // Gulls are split out so they can circle over the tip.
+  rubbishTip: { b64: RUBBISH_TIP_GLB, glass: /office window|windscreen|cab side window|headlamp|lamp head/i, spin: /^gull /i },
+  sandTower: { b64: SAND_TOWER_GLB, glass: /window glass|entry glazing|lamp globe|roof skylight/i },
   marketSquare: { b64: MARKET_SQUARE_GLB, glass: /glazing|warm glass|^window$|^window \d/i, neon: /string light|lamp globe/i },
 };
 const GLASS_EXCLUDE = /trim|mullion|transom|jamb|sill|frame|housing|backing|divider|window top|lintel/i;
@@ -69,23 +77,24 @@ async function gunzip(b64) {
   return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
 }
 
-async function loadOne({ b64, glass, neon, smoke }) {
+async function loadOne({ b64, glass, neon, smoke, spin }) {
   const gltf = await new GLTFLoader().parseAsync(await gunzip(b64), '');
   gltf.scene.updateMatrixWorld(true);
   const body = [];
   const glow = [];
   const lit = [];
   const puffs = [];
+  const birds = [];
   gltf.scene.traverse((o) => {
     if (!o.isMesh) return;
     // Original node name (three sanitises o.name); underscores read as spaces.
     const name = (o.userData.name || o.name || (o.parent && (o.parent.userData.name || o.parent.name)) || '').replace(/_/g, ' ');
     const skip = GLASS_EXCLUDE.test(name);
-    (smoke && smoke.test(name) ? puffs : neon && neon.test(name) && !skip ? lit : glass.test(name) && !skip ? glow : body).push(prep(o));
+    (spin && spin.test(name) ? birds : smoke && smoke.test(name) ? puffs : neon && neon.test(name) && !skip ? lit : glass.test(name) && !skip ? glow : body).push(prep(o));
   });
   if (!body.length) throw new Error('model has no meshes');
   const merge = (list) => (list.length ? mergeGeometries(list) : null);
-  const parts = { body: merge(body), glass: merge(glow), neon: merge(lit), smoke: merge(puffs) };
+  const parts = { body: merge(body), glass: merge(glow), neon: merge(lit), smoke: merge(puffs), spin: merge(birds) };
   // Z-up -> Y-up (front, at -y in the file, ends up facing +z), then centre.
   const box = new THREE.Box3();
   for (const g of Object.values(parts)) if (g) g.rotateX(-Math.PI / 2);
