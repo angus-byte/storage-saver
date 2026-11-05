@@ -20,6 +20,7 @@ import { PALE_GREY_TOWER_GLB } from './models/pale-grey-tower.js';
 import { TECH_LAB_GLB } from './models/tech-lab.js';
 import { POST_OFFICE_GLB } from './models/post-office.js';
 import { CONTAINER_WAREHOUSE_GLB } from './models/container-warehouse.js';
+import { CAR_WASH_GLB } from './models/car-wash.js';
 
 // Category id -> model. Parts are picked by node name: `glass` windows glow
 // warm at night, `neon` signs and bulbs glow in their own colour.
@@ -28,6 +29,7 @@ export const MODEL_FOR_CATEGORY = {
   dev: 'techLab',
   mail: 'postOffice',
   archives: 'warehouse',
+  cache: 'carWash',
   backups: 'decoTower',
   documents: 'sandTower',
   cloud: 'domedStation',
@@ -58,6 +60,7 @@ const SOURCES = {
   techLab: { b64: TECH_LAB_GLB, glass: /front glass panel|side window|side glow|penthouse vertical glazing|entrance glass atrium|entry door glow|streetlight globe/i, neon: /glowing monitor|monitor status bar|glowing display|display interface line|sign light segment|antenna beacon/i },
   postOffice: { b64: POST_OFFICE_GLB, glass: /recessed window|side window|double glass doors|lamp globe|headlamp|clock dial/i },
   warehouse: { b64: CONTAINER_WAREHOUSE_GLB, glass: /clerestory window|street lamp head|forklift windshield/i },
+  carWash: { b64: CAR_WASH_GLB, glass: /side glass|glass horizontal|streetlamp globe|headlight|car windscreen|car rear glass|touchscreen/i, neon: /sign led|illuminated sign letters/i },
   marketSquare: { b64: MARKET_SQUARE_GLB, glass: /glazing|warm glass|^window$|^window \d/i, neon: /string light|lamp globe/i },
 };
 const GLASS_EXCLUDE = /trim|mullion|transom|jamb|sill|frame|housing|backing|divider|window top|lintel/i;
