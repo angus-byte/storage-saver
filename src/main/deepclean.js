@@ -381,6 +381,31 @@ async function deepSuggestions(tree, { home = require('os').homedir(), now = Dat
   };
 }
 
+/**
+ * Everything in ~/Downloads (files and folders, any size over 1 MB) untouched
+ * for `days`. Read straight from disk: the scan folds files under 20 MB into
+ * "small files", which hid most real downloads from Street Sweep.
+ */
+async function oldDownloads(home, now = Date.now(), days = 60) {
+  const dir = path.join(home, 'Downloads');
+  let entries;
+  try {
+    entries = await fsp.readdir(dir, { withFileTypes: true });
+  } catch {
+    return { items: [], total: 0 };
+  }
+  const out = [];
+  for (const e of entries) {
+    if (e.name.startsWith('.') || /^desktop\.ini$/i.test(e.name) || e.isSymbolicLink()) continue;
+    const full = path.join(dir, e.name);
+    const m = await measure(full);
+    if (m.size < MB || now - m.mtime < days * DAY) continue;
+    out.push({ name: e.name, path: full, size: m.size, kind: 'downloads', mtime: m.mtime, isDir: e.isDirectory() });
+  }
+  out.sort((a, b) => b.size - a.size);
+  return group(out);
+}
+
 /** Street Sweep minus anything Deep Clean owns, so nothing is listed twice. */
 function sweepOnly(sugg) {
   const out = {};
@@ -391,4 +416,4 @@ function sweepOnly(sugg) {
   return out;
 }
 
-module.exports = { parseXmlPlist, appBundles, measure, mailAttachments, deepSuggestions, sweepOnly, isDeepPath, sizeOf, sameFile, findDuplicates, belongsToApp, renderCaches };
+module.exports = { oldDownloads, parseXmlPlist, appBundles, measure, mailAttachments, deepSuggestions, sweepOnly, isDeepPath, sizeOf, sameFile, findDuplicates, belongsToApp, renderCaches };
