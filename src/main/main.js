@@ -6,7 +6,7 @@ const fsp = require('fs/promises');
 const { scan, suggestions, defaultRoots, forget, clearDir, addToBin } = require('./scanner');
 const { createLicence } = require('./licence');
 const { machineId } = require('./machineid');
-const { deepSuggestions, sweepOnly, sizeOf, sameFile } = require('./deepclean');
+const { deepSuggestions, sweepOnly, sizeOf, sameFile, oldDownloads } = require('./deepclean');
 const config = require('./config');
 const cityhall = require('./cityhall');
 const photos = require('./photos');
@@ -184,7 +184,7 @@ let lowSpaceArmed = true;
 // Safe Clean = caches + Trash, the same two groups as the Safe Clean tab.
 async function updateSafe() {
   if (!lastTree) return;
-  const s = await withRecycleBin(sweepOnly(suggestions(lastTree)));
+  const s = await streetSweep(lastTree);
   const items = ['caches', 'trash'].flatMap((k) => (s[k] ? s[k].items : []));
   safe = { state: 'ready', bytes: items.reduce((n, i) => n + i.size, 0), items };
   if (tray) tray.render();
@@ -349,11 +349,22 @@ ipcMain.handle('scan:start', async (event, root) => {
     });
     lastTree = tree;
     updateSafe();
-    return { tree, suggestions: await withRecycleBin(sweepOnly(suggestions(tree))) };
+    return { tree, suggestions: await streetSweep(tree) };
   } finally {
     if (currentScan === controller) currentScan = null;
   }
 });
+
+// Street Sweep for a scanned tree. When the scan covers the home folder, old
+// downloads are read from disk so small files and folders are listed too.
+async function streetSweep(tree) {
+  const sugg = sweepOnly(suggestions(tree));
+  if (tree && path.resolve(tree.path) === path.resolve(os.homedir())) {
+    const dl = await oldDownloads(os.homedir()).catch(() => null);
+    if (dl) sugg.oldDownloads = sweepOnly({ d: dl }).d;
+  }
+  return withRecycleBin(sugg);
+}
 
 // Windows keeps the Recycle Bin at the drive root, outside the scanned home
 // folder, so Street Sweep adds it here (the Mac Trash is inside the home).
@@ -618,7 +629,7 @@ async function weeklyCheckup() {
     const tree = await scan(defaultRoots()[0], { skip: scanSkip, signal: controller.signal });
     lastTree = tree;
     updateSafe();
-    const sweep = await withRecycleBin(sweepOnly(suggestions(tree)));
+    const sweep = await streetSweep(tree);
     const deep = await deepSuggestions(tree, deepOpts());
     const bytes = [...Object.values(sweep), ...Object.values(deep)].reduce((n, g) => n + g.total, 0);
     plan.setWeekly({ lastRun: Date.now(), lastFound: bytes });

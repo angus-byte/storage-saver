@@ -114,3 +114,25 @@ test('a delete updates the scan in place: folders shrink, Trash grows', () => {
   assert.strictEqual(forget(tree, '/h/not/scanned'), 0);
   assert.strictEqual(forget(tree, '/elsewhere'), 0);
 });
+
+test('oldDownloads lists old small files and folders in Downloads', async () => {
+  const { oldDownloads } = require('../src/main/deepclean');
+  const fsx = require('fs');
+  const osx = require('os');
+  const px = require('path');
+  const home = fsx.mkdtempSync(px.join(osx.tmpdir(), 'dl-'));
+  const dl = px.join(home, 'Downloads');
+  fsx.mkdirSync(px.join(dl, 'old-folder'), { recursive: true });
+  const big = Buffer.alloc(2 * 1024 * 1024);
+  fsx.writeFileSync(px.join(dl, 'old.zip'), big);
+  fsx.writeFileSync(px.join(dl, 'old-folder', 'a.bin'), big);
+  fsx.writeFileSync(px.join(dl, 'new.pdf'), big);
+  fsx.writeFileSync(px.join(dl, 'tiny.txt'), 'x');
+  fsx.writeFileSync(px.join(dl, '.DS_Store'), big);
+  const old = new Date(Date.now() - 90 * 86400000);
+  for (const f of ['old.zip', 'old-folder/a.bin', 'old-folder', 'tiny.txt']) fsx.utimesSync(px.join(dl, f), old, old);
+  const g = await oldDownloads(home);
+  assert.deepStrictEqual(g.items.map((i) => i.name).sort(), ['old-folder', 'old.zip']);
+  assert.strictEqual(g.total, 4 * 1024 * 1024);
+  fsx.rmSync(home, { recursive: true, force: true });
+});

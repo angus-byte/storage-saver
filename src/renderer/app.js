@@ -3461,6 +3461,12 @@ function renderClean() {
     wrap.appendChild(buildGroup(g, title, desc, mode, keyName === 'caches'));
   }
   $('clean-total').textContent = grand ? `· up to ${fmt(grand)}` : '';
+  if (!grand) {
+    const p = document.createElement('p');
+    p.className = 'hint sweep-empty';
+    p.textContent = 'All clear. Street Sweep lists downloads untouched for 60+ days and files over 500 MB not changed in 6 months. Caches and the Trash are on the Safe Clean tab.';
+    wrap.appendChild(p);
+  }
   if (pro) pro.renderDeep(wrap);
   updateTrashButton();
 }
