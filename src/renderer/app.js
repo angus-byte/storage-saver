@@ -96,8 +96,13 @@ const KIND_COLORS = {
 for (const c of CATEGORIES) KIND_COLORS[c.id] = c.color;
 const KIND_LABELS = { cache: 'Caches & temp', trash: 'Trash', downloads: 'Downloads & installers', media: 'Video, photo & audio', apps: 'Apps', documents: 'Documents', system: 'System', other: 'Other', free: 'Free space (park)' };
 for (const c of CATEGORIES) KIND_LABELS[c.id] = c.label;
-const BASE_W = 112;
-const BASE_D = 86;
+// Buildings are drawn BUILDING_SCALE times their old size next to the streets,
+// cars and people; the plinth (and the camera, fog and shadows with it) grows
+// by CITY_SCALE so the bigger buildings still have room and the city fits.
+const BUILDING_SCALE = 3;
+const CITY_SCALE = 1.8;
+const BASE_W = Math.round(112 * CITY_SCALE);
+const BASE_D = Math.round(86 * CITY_SCALE);
 const STREET = 5; // gap between districts
 const SIDEWALK = 1.0; // pavement ring inside a district
 const LOT_GAP = 0.45; // gap between buildings in a district
@@ -149,30 +154,30 @@ container.appendChild(renderer.domElement);
 const SKY = 0x3cb6b4;
 const scene = new THREE.Scene();
 scene.background = null;
-scene.fog = new THREE.Fog(0x4fbdbb, 320, 700);
+scene.fog = new THREE.Fog(0x4fbdbb, 320 * CITY_SCALE, 700 * CITY_SCALE);
 
-const camera = new THREE.PerspectiveCamera(32, window.innerWidth / window.innerHeight, 1, 1500);
-camera.position.set(165, 150, 185);
+const camera = new THREE.PerspectiveCamera(32, window.innerWidth / window.innerHeight, 1, 1500 * CITY_SCALE);
+camera.position.set(165 * CITY_SCALE, 150 * CITY_SCALE, 185 * CITY_SCALE);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.maxPolarAngle = Math.PI / 2.1;
 controls.minDistance = 50;
-controls.maxDistance = 520;
-controls.target.set(0, 14, 0);
+controls.maxDistance = 520 * CITY_SCALE;
+controls.target.set(0, 14 * CITY_SCALE, 0);
 
 const hemi = new THREE.HemisphereLight(0xdff3ef, 0x4a4238, 0.4);
 scene.add(hemi);
 const key = new THREE.DirectionalLight(0xffe6c4, 3.6); // hard, warm afternoon sun
-key.position.set(130, 95, 55); // lower sun: longer, crisper shadows
+key.position.set(130, 95, 55).multiplyScalar(CITY_SCALE); // lower sun: longer, crisper shadows
 key.castShadow = true;
 // Finer shadow map on Mac so moving sun shadows glide; Windows laptops keep 2048 for speed.
 key.shadow.mapSize.setScalar(window.storage && window.storage.platform === "win32" ? 2048 : 4096);
-key.shadow.camera.left = -140;
-key.shadow.camera.right = 140;
-key.shadow.camera.top = 140;
-key.shadow.camera.bottom = -140;
-key.shadow.camera.far = 500;
+key.shadow.camera.left = -140 * CITY_SCALE;
+key.shadow.camera.right = 140 * CITY_SCALE;
+key.shadow.camera.top = 140 * CITY_SCALE;
+key.shadow.camera.bottom = -140 * CITY_SCALE;
+key.shadow.camera.far = 500 * CITY_SCALE;
 key.shadow.bias = -0.0002;
 key.shadow.radius = 1.5; // crisp daytime shadows (softened at night in applyNight)
 key.shadow.blurSamples = 16;
@@ -200,8 +205,8 @@ scene.add(clouds);
     }
     // Clouds whose track crosses the city fly above the tallest spire; the
     // low ones stay out beyond the plinth so nothing drifts through a tower.
-    g.position.set(x, Math.abs(z) < 70 ? Math.max(y, 92) : y, z);
-    if (z > 100) g.scale.setScalar(0.55); // the cloud nearest the camera stays small
+    g.position.set(x * CITY_SCALE, Math.abs(z) < 70 ? Math.max(y * CITY_SCALE, 92 * BUILDING_SCALE) : y * CITY_SCALE, z * CITY_SCALE);
+    g.scale.setScalar(z > 100 ? 0.55 * CITY_SCALE : CITY_SCALE); // the cloud nearest the camera stays small
     g.userData.speed = 0.4 + Math.random() * 0.4;
     clouds.add(g);
   }
@@ -364,9 +369,6 @@ const pavementMat = new THREE.MeshStandardMaterial({ color: 0xdedbd3, roughness:
 const parkMat = new THREE.MeshStandardMaterial({ color: 0x8ccf76, roughness: 0.95 });
 const roofMat = new THREE.MeshStandardMaterial({ color: 0xc8734e, roughness: 0.75 }); // terracotta caps, as in the reference
 const spireMat = new THREE.MeshStandardMaterial({ color: 0xdfe3e8, metalness: 0.5, roughness: 0.3 });
-const trunkMat = new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 1 });
-const canopyMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
-const canopyGeo = new THREE.IcosahedronGeometry(0.5, 1);
 const laneMat = new THREE.MeshBasicMaterial({ color: 0xf2f0e6 });
 
 // Window texture: light facade with framed windows, floor bands and a few lit rooms.
@@ -601,7 +603,6 @@ torusGeo.rotateX(Math.PI / 2);
 // ---------------------------------------------------------------------------
 let meshes = []; // hoverable: buildings and district pavements
 let extras = []; // decoration: roofs, trees, labels, lanes
-let treeSpots = [];
 
 function clearBlocks() {
   for (const m of meshes) {
@@ -613,7 +614,6 @@ function clearBlocks() {
   for (const e of extras) blocks.remove(e);
   meshes = [];
   extras = [];
-  treeSpots = [];
   cars = [];
   people = [];
   labelPairs = [];
@@ -670,7 +670,7 @@ function layout() {
   for (const r of rects) placeSuburb(r);
   buildStreets(rects);
   buildPeople(rects);
-  placeTrees();
+  if (seasons) seasons.refresh();
   renderCrumbs();
   renderFiles();
   if (state.open) {
@@ -702,8 +702,8 @@ function applyNight() {
   hemi.groundColor.copy(lerpHex(_c1, 0x4a4238, 0x0c1020, k));
   scene.fog.color.lerp(_c2.setHex(0xe8875a), warm * 0.7);
   // Thicker haze in the golden hour.
-  scene.fog.near = 320 - 150 * warm;
-  scene.fog.far = 700 - 200 * warm;
+  scene.fog.near = (320 - 150 * warm) * CITY_SCALE;
+  scene.fog.far = (700 - 200 * warm) * CITY_SCALE;
   hemi.color.lerp(_c2.setHex(0xffb98a), warm * 0.55);
   hemi.intensity = 0.4 + (0.35 - 0.4) * k;
   fill.intensity = 0.12 + (0.15 - 0.12) * k;
@@ -717,12 +717,12 @@ function applyNight() {
     const u = k / 0.5;
     key.color.copy(lerpHex(_c1, 0xffe6c4, 0xff7a3d, Math.min(1, u * 1.6)));
     key.intensity = 3.6 + (1.1 - 3.6) * u;
-    key.position.set(130 + (170 - 130) * u, 95 + (14 - 95) * u, 55 + (-40 - 55) * u);
+    key.position.set(130 + (170 - 130) * u, 95 + (14 - 95) * u, 55 + (-40 - 55) * u).multiplyScalar(CITY_SCALE);
   } else {
     const u = (k - 0.5) / 0.5;
     key.color.copy(lerpHex(_c1, 0xff7a3d, 0x9fb4ff, u));
     key.intensity = 1.1 + (0.55 - 1.1) * u;
-    key.position.set(170 + (-90 - 170) * u, 14 + (130 - 14) * u, -40 + (-70 + 40) * u);
+    key.position.set(170 + (-90 - 170) * u, 14 + (130 - 14) * u, -40 + (-70 + 40) * u).multiplyScalar(CITY_SCALE);
   }
   applySunAngle();
   stars.visible = k > 0.02;
@@ -769,7 +769,7 @@ const ray = new THREE.Mesh(rayGeo, rayMat);
 ray.visible = false;
 ray.renderOrder = 5;
 scene.add(ray);
-const RAY_TOP = 190;
+const RAY_TOP = 190 * CITY_SCALE;
 const _focusAim = new THREE.Vector3();
 const _focusSrc = new THREE.Vector3();
 const _focusDir = new THREE.Vector3();
@@ -832,7 +832,7 @@ function toggleNight() {
 }
 // Rotates the sun (key light) and moon round the city by sunAngle, on top of
 // the base position applyNight picks for the current nightK.
-const _keyBase = new THREE.Vector3(130, 95, 55);
+const _keyBase = new THREE.Vector3(130, 95, 55).multiplyScalar(CITY_SCALE);
 function applySunAngle() {
   _keyBase.copy(key.position);
   key.position.applyAxisAngle(_yAxis, sunAngle);
@@ -894,12 +894,10 @@ function placeSuburb(r) {
   blocks.add(slab);
   meshes.push(slab);
   addLaneMarks(r);
-  if (w > 6 && d > 6) ringTrees(x0, z0, w, d, park ? 2.2 : 4.5);
   streetLights(x0, z0, w, d);
   trafficSignals(x0, z0, w, d);
   if (park) {
-    const keepOut = buildPark(x0, z0, w, d);
-    scatterTrees(x0 + SIDEWALK, z0 + SIDEWALK, w - SIDEWALK * 2, d - SIDEWALK * 2, Math.min(70, Math.floor((w * d) / 16)), keepOut);
+    buildPark(x0, z0, w, d);
     return;
   }
   if (w > 14) busStop(x0 + w * 0.3, z0 + d - 0.9);
@@ -923,8 +921,8 @@ function placeSuburb(r) {
   for (const lr of lotRects.slice(0, 3)) {
     if (lr.w * lr.h > 40) {
       // Use the height actually built (landmarks are capped), not the raw size.
-      const bh = lr.builtH || heightFor(lr.item.item.size);
-      addLabel(lr.item.item, lr.x + lr.w / 2, 1.1 + bh + (bh > 30 ? bh * 0.2 : 2), lr.y + lr.h / 2, Math.min(lr.w + 6, 26));
+      const bh = lr.builtH || heightFor(lr.item.item.size) * BUILDING_SCALE;
+      addLabel(lr.item.item, lr.x + lr.w / 2, 1.1 + bh + (bh > 30 ? bh * 0.2 : 2), lr.y + lr.h / 2, lr.w + 6);
     }
   }
 }
@@ -935,15 +933,15 @@ function placeBuilding(r, depth, gap) {
   // even when a suburb has room to spare.
   // Buildings fill most of their lot so they read big; scale is deliberately
   // generous next to streets, cars and people.
-  const side = Math.sqrt(r.item.size) * 2;
+  const side = Math.sqrt(r.item.size) * 2 * BUILDING_SCALE;
   const w = Math.max(0.3, Math.min(r.w - gap, side * (0.95 + Math.random() * 0.1)));
   const d = Math.max(0.3, Math.min(r.h - gap, side * (0.95 + Math.random() * 0.1)));
   if (w < 0.6 || d < 0.6) return 0;
-  let h = heightFor(item.size);
+  let h = heightFor(item.size) * BUILDING_SCALE;
   const landmark = landmarkFor(item);
   if (landmark === 'model') return placeModel(r, item, w, h, d, depth);
-  if (landmark === 'library') h = Math.min(h, 17);
-  if (LANDMARK_MAX_H[landmark]) h = Math.min(h, LANDMARK_MAX_H[landmark]);
+  if (landmark === 'library') h = Math.min(h, 17 * BUILDING_SCALE);
+  if (LANDMARK_MAX_H[landmark]) h = Math.min(h, LANDMARK_MAX_H[landmark] * BUILDING_SCALE);
   const plain = { library: 0xe9e2d0, tip: 0x7a6a58, studio: 0xd8cfbe, market: 0xd8d2c6 };
   const style = landmark && landmark !== 'music' ? null : styleFor(item, h, Math.min(w, d));
   const mat = plain[landmark] ? new THREE.MeshStandardMaterial({ color: plain[landmark], roughness: 0.9 }) : facadeMaterial(item.kind, w, h, d, Math.floor(Math.random() * 6), style);
@@ -1901,7 +1899,6 @@ function fillLot(lr, b) {
         if (r < 0.3) continue; // leave open pavement
         if (r < 0.5) {
           piece(boxGeo, parkMat, cx, 1.1, cz, CELL - 0.5, 0.05, CELL - 0.5, false); // lawn
-          if (Math.random() < 0.5) treeSpots.push([cx + (Math.random() - 0.5), cz + (Math.random() - 0.5)]);
           continue;
         }
         placeProp(cx, cz, Math.random() < 0.7 ? theme : Math.random(), (i + j) % 2 === 0);
@@ -1965,9 +1962,8 @@ function placeProp(x, z, theme, alt) {
     piece(boxGeo, propMat(alt ? 0x4cc9f0 : 0x90be6d), x, y + 1.7, z, 1.9, 0.08, 1.2);
     for (let k = 0; k < 3; k++) piece(boxGeo, propMat(PROP_COLORS[(k + (alt ? 2 : 0)) % PROP_COLORS.length]), x - 0.5 + k * 0.5, y + 0.7, z, 0.35, 0.2, 0.5, false);
   } else if (theme < 0.9) {
-    // Hedge row with a tree.
+    // Hedge row.
     piece(sphereGeo, hedgeMat, x, y, z, CELL - 0.4, 0.9, 0.7, true);
-    if (alt) treeSpots.push([x, z + 0.7]);
   } else {
     // Small plaza: paving, statue plinth and bike racks.
     piece(boxGeo, stoneMat, x, y, z, CELL - 0.2, 0.05, CELL - 0.2, false);
@@ -2018,77 +2014,6 @@ function addLaneMarks(r) {
   const bottom = r.y + r.h;
   if (right < BASE_W / 2 - 1) for (let z = r.y + 1; z < r.y + r.h - 1; z += 3) dash(right, z + 0.7, 1.4, false);
   if (bottom < BASE_D / 2 - 1) for (let x = r.x + 1; x < r.x + r.w - 1; x += 3) dash(x + 0.7, bottom, 1.4, true);
-}
-
-function ringTrees(x0, z0, w, d, step) {
-  const inset = SIDEWALK * 0.5;
-  for (let x = x0 + inset + 1; x < x0 + w - inset; x += step) {
-    treeSpots.push([x, z0 + inset]);
-    treeSpots.push([x, z0 + d - inset]);
-  }
-  for (let z = z0 + inset + step; z < z0 + d - inset - 1; z += step) {
-    treeSpots.push([x0 + inset, z]);
-    treeSpots.push([x0 + w - inset, z]);
-  }
-}
-
-function scatterTrees(x0, z0, w, d, n, keepOut = []) {
-  for (let i = 0; i < n; i++) {
-    const x = x0 + Math.random() * w;
-    const z = z0 + Math.random() * d;
-    if (keepOut.some((k) => x > k.x && x < k.x + k.w && z > k.z && z < k.z + k.d)) continue;
-    treeSpots.push([x, z]);
-  }
-}
-
-function placeTrees() {
-  const n = Math.min(treeSpots.length, 900);
-  if (!n) return;
-  const trunks = new THREE.InstancedMesh(cylGeo, trunkMat, n);
-  const lower = new THREE.InstancedMesh(canopyGeo, canopyMat, n);
-  const upper = new THREE.InstancedMesh(canopyGeo, canopyMat, n);
-  const pines = new THREE.InstancedMesh(coneGeo, canopyMat, n);
-  const m = new THREE.Matrix4();
-  const color = new THREE.Color();
-  const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
-  for (let i = 0; i < n; i++) {
-    const [x, z] = treeSpots[i];
-    const s = 0.8 + Math.random() * 0.6;
-    const pine = Math.random() < 0.22;
-    const trunkH = (pine ? 0.7 : 0.9) * s;
-    m.makeScale(0.22 * s, trunkH, 0.22 * s);
-    m.setPosition(x, 1.1, z);
-    trunks.setMatrixAt(i, m);
-    color.setHSL(0.28 + Math.random() * 0.08, 0.6, 0.28 + Math.random() * 0.12);
-    if (pine) {
-      m.makeScale(1.3 * s, 2.6 * s, 1.3 * s);
-      m.setPosition(x, 1.1 + trunkH * 0.6, z);
-      pines.setMatrixAt(i, m);
-      pines.setColorAt(i, color.offsetHSL(0.03, 0, -0.06));
-      lower.setMatrixAt(i, hidden);
-      upper.setMatrixAt(i, hidden);
-    } else {
-      m.makeScale(1.7 * s, 1.3 * s, 1.7 * s);
-      m.setPosition(x + (Math.random() - 0.5) * 0.2, 1.1 + trunkH + 0.5 * s, z + (Math.random() - 0.5) * 0.2);
-      lower.setMatrixAt(i, m);
-      lower.setColorAt(i, color);
-      m.makeScale(1.15 * s, 1.0 * s, 1.15 * s);
-      m.setPosition(x + (Math.random() - 0.5) * 0.3, 1.1 + trunkH + 1.15 * s, z + (Math.random() - 0.5) * 0.3);
-      upper.setMatrixAt(i, m);
-      upper.setColorAt(i, color.clone().offsetHSL(0, 0, 0.07));
-      pines.setMatrixAt(i, hidden);
-    }
-  }
-  lower.userData.tree = 'lower';
-  upper.userData.tree = 'upper';
-  pines.userData.tree = 'pine';
-  for (const im of [trunks, lower, upper, pines]) {
-    im.castShadow = true;
-    im.receiveShadow = true;
-    blocks.add(im);
-    extras.push(im);
-  }
-  if (seasons) seasons.refresh();
 }
 
 // ---------------------------------------------------------------------------
@@ -2550,7 +2475,7 @@ function buildSite() {
   buildStreets(rects, { site: true });
   roadWorks();
   buildPeople(rects, { workers: true, loops });
-  placeTrees();
+  if (seasons) seasons.refresh();
   addLabel({ name: 'Building your city', sub: 'surveying your files…' }, 0, 8, 0, 40, true);
   applyNight();
 }
@@ -2966,7 +2891,7 @@ function drawLabel(item, sign, nightStyle) {
 }
 
 function addLabel(item, x, y, z, width, sign = false) {
-  const s = Math.max(10, Math.min(24, width * 0.55));
+  const s = Math.max(10, Math.min(24, width * 0.55)) * 1.3;
   const pair = {};
   for (const nightStyle of [false, true]) {
     const sprite = drawLabel(item, sign, nightStyle);
@@ -3219,7 +3144,7 @@ function animate() {
   if (nightK >= 1) stars.material.opacity = 0.78 + 0.2 * Math.sin(t * 2.3);
   for (const c of clouds.children) {
     c.position.x += c.userData.speed * dt * 1.8;
-    if (c.position.x > 280) c.position.x = -280;
+    if (c.position.x > 280 * CITY_SCALE) c.position.x = -280 * CITY_SCALE;
   }
   for (const m of meshes) {
     const th = m.userData.targetH;
@@ -3743,7 +3668,7 @@ seasons = initSeasons({
   showUpgrade: (why) => pro.showUpgrade(why),
   getMeshes: () => meshes,
   getExtras: () => extras,
-  getTreeSpots: () => treeSpots,
+  getTreeSpots: () => [],
   applyNight,
 });
 api.diskInfo().then((d) => {
