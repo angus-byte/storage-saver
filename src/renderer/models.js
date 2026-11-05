@@ -21,6 +21,7 @@ import { TECH_LAB_GLB } from './models/tech-lab.js';
 import { POST_OFFICE_GLB } from './models/post-office.js';
 import { CONTAINER_WAREHOUSE_GLB } from './models/container-warehouse.js';
 import { CAR_WASH_GLB } from './models/car-wash.js';
+import { MUSEUM_OF_ODDITIES_GLB } from './models/museum-of-oddities.js';
 
 // Category id -> model. Parts are picked by node name: `glass` windows glow
 // warm at night, `neon` signs and bulbs glow in their own colour.
@@ -30,6 +31,7 @@ export const MODEL_FOR_CATEGORY = {
   mail: 'postOffice',
   archives: 'warehouse',
   cache: 'carWash',
+  other: 'museum',
   backups: 'decoTower',
   documents: 'sandTower',
   cloud: 'domedStation',
@@ -61,6 +63,7 @@ const SOURCES = {
   postOffice: { b64: POST_OFFICE_GLB, glass: /recessed window|side window|double glass doors|lamp globe|headlamp|clock dial/i },
   warehouse: { b64: CONTAINER_WAREHOUSE_GLB, glass: /clerestory window|street lamp head|forklift windshield/i },
   carWash: { b64: CAR_WASH_GLB, glass: /side glass|glass horizontal|streetlamp globe|headlight|car windscreen|car rear glass|touchscreen/i, neon: /sign led|illuminated sign letters/i },
+  museum: { b64: MUSEUM_OF_ODDITIES_GLB, glass: /curved glazed gallery|rear windows|door glass|entrance glass doors|lamp globe|roof lantern \d+$/i },
   marketSquare: { b64: MARKET_SQUARE_GLB, glass: /glazing|warm glass|^window$|^window \d/i, neon: /string light|lamp globe/i },
 };
 const GLASS_EXCLUDE = /trim|mullion|transom|jamb|sill|frame|housing|backing|divider|window top|lintel/i;
