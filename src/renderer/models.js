@@ -1,0 +1,87 @@
+// Hand-made landmark buildings shipped as glTF (.glb) models. The .glb files
+// live in assets/models and are embedded as base64 modules by
+// scripts/embed-models.js, so nothing is fetched at runtime.
+// Each model is merged into two meshes (body + glass) for speed, turned to
+// Y-up (the files are Z-up), centred, and sat on y = 0 with its front on +z.
+import * as THREE from './vendor/three.module.js';
+import { GLTFLoader } from './vendor/GLTFLoader.js';
+import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
+import { ART_DECO_TOWER_GLB } from './models/art-deco-tower.js';
+import { DOMED_STATION_GLB } from './models/domed-station.js';
+import { APARTMENT_DETAILED_GLB } from './models/apartment-detailed.js';
+
+// Category id -> model. Glass parts (matched by node name) glow at night.
+export const MODEL_FOR_CATEGORY = { apps: 'decoTower', documents: 'domedStation', downloads: 'apartment' };
+const SOURCES = {
+  decoTower: { b64: ART_DECO_TOWER_GLB, glass: /glazing|glazed window|glass|lamp head|lamp glow/i },
+  domedStation: { b64: DOMED_STATION_GLB, glass: /glazing|glazed bay|window pane|lamp globe|lantern glow|side window -?\d/i },
+  apartment: { b64: APARTMENT_DETAILED_GLB, glass: /glazed window|window glass|ground floor window|entrance glazing|warm lobby|streetlight globe|wall lantern/i },
+};
+const GLASS_EXCLUDE = /trim|mullion|transom|jamb|sill|frame|housing/i;
+
+const _c = new THREE.Color();
+function prep(mesh) {
+  let g = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+  g.applyMatrix4(mesh.matrixWorld);
+  const pos = g.getAttribute('position');
+  const src = g.getAttribute('color');
+  const col = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    // trimesh writes sRGB bytes; three expects linear vertex colours.
+    if (src) _c.setRGB(src.getX(i), src.getY(i), src.getZ(i), THREE.SRGBColorSpace);
+    else _c.setRGB(0.8, 0.8, 0.8);
+    col[i * 3] = _c.r;
+    col[i * 3 + 1] = _c.g;
+    col[i * 3 + 2] = _c.b;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', pos.clone());
+  out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  out.computeVertexNormals(); // non-indexed, so faces stay crisp
+  g.dispose();
+  return out;
+}
+
+async function gunzip(b64) {
+  const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
+  return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+}
+
+async function loadOne({ b64, glass }) {
+  const gltf = await new GLTFLoader().parseAsync(await gunzip(b64), '');
+  gltf.scene.updateMatrixWorld(true);
+  const body = [];
+  const glow = [];
+  gltf.scene.traverse((o) => {
+    if (!o.isMesh) return;
+    // Original node name (three sanitises o.name); underscores read as spaces.
+    const name = (o.userData.name || o.name || (o.parent && (o.parent.userData.name || o.parent.name)) || '').replace(/_/g, ' ');
+    (glass.test(name) && !GLASS_EXCLUDE.test(name) ? glow : body).push(prep(o));
+  });
+  if (!body.length) throw new Error('model has no meshes');
+  const merge = (list) => (list.length ? mergeGeometries(list) : null);
+  const parts = { body: merge(body), glass: merge(glow) };
+  // Z-up -> Y-up (front, at -y in the file, ends up facing +z), then centre.
+  const box = new THREE.Box3();
+  for (const g of Object.values(parts)) if (g) g.rotateX(-Math.PI / 2);
+  for (const g of Object.values(parts)) if (g) { g.computeBoundingBox(); box.union(g.boundingBox); }
+  const c = box.getCenter(new THREE.Vector3());
+  for (const g of Object.values(parts)) if (g) g.translate(-c.x, -box.min.y, -c.z);
+  const size = box.getSize(new THREE.Vector3());
+  return { ...parts, w: size.x, h: size.y, d: size.z };
+}
+
+// Resolves to { decoTower: {...}, domedStation: {...} }; a model that fails to
+// load is left out, and its category falls back to the procedural building.
+export async function loadLandmarkModels() {
+  const out = {};
+  await Promise.all(
+    Object.entries(SOURCES).map(([id, src]) =>
+      loadOne(src).then(
+        (m) => (out[id] = m),
+        (e) => console.warn(`Landmark model ${id} failed to load; using the built-in building.`, e)
+      )
+    )
+  );
+  return out;
+}

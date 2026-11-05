@@ -3,3 +3,5 @@ dist/
 src/renderer/vendor/
 demo/index.html
 .DS_Store
+src/renderer/demo-test.html
+src/renderer/timing-test.html
