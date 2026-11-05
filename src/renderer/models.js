@@ -16,11 +16,13 @@ import { CLASSICAL_LIBRARY_GLB } from './models/classical-library.js';
 import { FACTORY_GLB } from './models/factory.js';
 import { RUBBISH_TIP_GLB } from './models/rubbish-tip.js';
 import { SAND_TOWER_GLB } from './models/sand-tower.js';
+import { PALE_GREY_TOWER_GLB } from './models/pale-grey-tower.js';
 
 // Category id -> model. Parts are picked by node name: `glass` windows glow
 // warm at night, `neon` signs and bulbs glow in their own colour.
 export const MODEL_FOR_CATEGORY = {
-  apps: 'decoTower',
+  apps: 'paleGreyTower',
+  backups: 'decoTower',
   documents: 'sandTower',
   cloud: 'domedStation',
   downloads: 'apartment',
@@ -45,6 +47,7 @@ const SOURCES = {
   // Gulls are split out so they can circle over the tip.
   rubbishTip: { b64: RUBBISH_TIP_GLB, glass: /office window|windscreen|cab side window|headlamp|lamp head/i, spin: /^gull /i },
   sandTower: { b64: SAND_TOWER_GLB, glass: /window glass|entry glazing|lamp globe|roof skylight/i },
+  paleGreyTower: { b64: PALE_GREY_TOWER_GLB, glass: /(front|side) window [\d -]+$|glass door|lamp globe/i },
   marketSquare: { b64: MARKET_SQUARE_GLB, glass: /glazing|warm glass|^window$|^window \d/i, neon: /string light|lamp globe/i },
 };
 const GLASS_EXCLUDE = /trim|mullion|transom|jamb|sill|frame|housing|backing|divider|window top|lintel/i;
@@ -88,7 +91,8 @@ async function loadOne({ b64, glass, neon, smoke, spin }) {
   gltf.scene.traverse((o) => {
     if (!o.isMesh) return;
     // Original node name (three sanitises o.name); underscores read as spaces.
-    const name = (o.userData.name || o.name || (o.parent && (o.parent.userData.name || o.parent.name)) || '').replace(/_/g, ' ');
+    // Numbered names ("0123_side_window_4") lose their leading number.
+    const name = (o.userData.name || o.name || (o.parent && (o.parent.userData.name || o.parent.name)) || '').replace(/_/g, ' ').replace(/^(V2 )?\d+ /i, ''); // drop numbering like "0123_"
     const skip = GLASS_EXCLUDE.test(name);
     (spin && spin.test(name) ? birds : smoke && smoke.test(name) ? puffs : neon && neon.test(name) && !skip ? lit : glass.test(name) && !skip ? glow : body).push(prep(o));
   });

@@ -40,7 +40,7 @@ Builds come from the **Build Mac app** GitHub Action (run it by hand or push a `
 - `src/main/scanner.js` – folder walker, size aggregation, categories, cleanup suggestions (pure Node, tested).
 - `src/main/main.js` – Electron window and the privileged actions (scan, reveal, move to Trash).
 - `src/renderer/` – the UI: `app.js` (Three.js scene + panel), `treemap.js` (squarified layout), `mock.js` (demo data).
-- `assets/models/*.glb` – hand-made landmark buildings (Applications = art deco tower, Documents = sand tower, Cloud Drives = domed station, Downloads = apartment block, Movies + Photos = film soundstage, Music = neon guitar tower, Desktop = market square, App Data = classical library, System = factory with swaying smoke, Trash = rubbish tip with circling gulls). After adding or changing one, run `node scripts/embed-models.js` (writes gzipped copies to `src/renderer/models/`) and map it to a category in `src/renderer/models.js`.
+- `assets/models/*.glb` – hand-made landmark buildings (Applications = pale grey tower, Phone & Backups = art deco tower, Documents = sand tower, Cloud Drives = domed station, Downloads = apartment block, Movies + Photos = film soundstage, Music = neon guitar tower, Desktop = market square, App Data = classical library, System = factory with swaying smoke, Trash = rubbish tip with circling gulls). After adding or changing one, run `node scripts/embed-models.js` (writes gzipped copies to `src/renderer/models/`) and map it to a category in `src/renderer/models.js`.
 
 ## Roadmap
 
