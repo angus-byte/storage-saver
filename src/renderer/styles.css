@@ -244,3 +244,14 @@ button.link { background: none; border: none; color: var(--accent); padding: 0 4
 #safe-list .name small { display: block; color: var(--muted); font-size: 11.5px; }
 #safe-list .size { font-weight: 600; font-variant-numeric: tabular-nums; }
 .safe-btn { width: 100%; padding: 13px; font-size: 14.5px; }
+
+/* System & other users breakdown */
+.sys-parts > li > .row { cursor: pointer; }
+.sys-bar { display: block; height: 4px; margin-top: 4px; border-radius: 2px; background: var(--soft); overflow: hidden; }
+.sys-bar i { display: block; height: 100%; background: var(--accent, #6c8cff); border-radius: 2px; }
+.sys-parts .row-actions > .muted { display: block; white-space: normal; margin-bottom: 4px; }
+.sys-kids { width: 100%; margin: 2px 0 4px; }
+.sys-kids .row { padding: 3px 6px; }
+.sys-kids .link { padding: 0 4px; }
+.sys-parts > li:not(.open) > .row-actions { display: none; }
+.sys-parts .row-actions > .muted, .sys-kids { flex-basis: 100%; }
