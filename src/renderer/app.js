@@ -3314,7 +3314,7 @@ function renderFiles() {
     $('files-head').innerHTML = `<span>Your city</span><span class="muted">${state.city.length} buildings</span>`;
     const ul = document.createElement('ul');
     ul.className = 'file-list';
-    for (const c of state.city) {
+    for (const c of bySize(state.city)) {
       const li = document.createElement('li');
       li.className = 'cat-row';
       li.innerHTML = `<span class="dot" style="background:${hexColor(c.kind)}"></span><span class="name">${esc(c.name)}</span><span class="size">${fmt(c.size)}</span>`;
@@ -3328,7 +3328,12 @@ function renderFiles() {
   $('files-back').onclick = () => openCategory(null);
   wrap.appendChild(fileList(cat.children, true));
 }
+// Files tab lists are always biggest first, at every folder level.
+function bySize(list) {
+  return [...(list || [])].sort((a, b) => (b.size || 0) - (a.size || 0));
+}
 function fileList(items, top) {
+  items = bySize(items);
   const ul = document.createElement('ul');
   ul.className = 'file-list';
   for (const it of items.slice(0, 200)) {
