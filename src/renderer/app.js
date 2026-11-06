@@ -157,7 +157,7 @@ scene.background = null;
 scene.fog = new THREE.Fog(0x4fbdbb, 320 * CITY_SCALE, 700 * CITY_SCALE);
 
 const camera = new THREE.PerspectiveCamera(32, window.innerWidth / window.innerHeight, 1, 1500 * CITY_SCALE);
-camera.position.set(165 * CITY_SCALE, 150 * CITY_SCALE, 185 * CITY_SCALE);
+camera.position.set(72 * CITY_SCALE, 80 * CITY_SCALE, 269 * CITY_SCALE);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
@@ -192,7 +192,7 @@ scene.add(clouds);
 (function makeClouds() {
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: 0.5, depthWrite: false });
   const geo = new THREE.SphereGeometry(1, 12, 10);
-  const spots = [[-120, 42, -90], [90, 55, -130], [170, 38, -30], [-150, 30, 70], [20, 60, -180], [-60, 36, 150], [-40, 70, -140], [140, 62, -110], [-190, 48, -20], [60, 34, 170], [200, 50, 40], [-100, 58, -200]];
+  const spots = [[-120, 42, -90], [90, 55, -130], [170, 38, -30], [-150, 30, 70], [20, 60, -180], [-60, 36, -160], [-40, 70, -140], [140, 62, -110], [-190, 48, -20], [60, 44, -230], [200, 50, 40], [-100, 58, -200]];
   for (const [x, y, z] of spots) {
     const g = new THREE.Group();
     const n = 4 + Math.floor(Math.random() * 3);
@@ -3190,9 +3190,21 @@ function animate() {
 }
 animate();
 
+// Default framing: shift the picture so the city sits in the open space to
+// the right of the left panel and a little low, leaving sky above. Done with
+// a view offset, so orbiting/zooming still pivot around the city centre.
+function frameCity() {
+  const w = window.innerWidth, h = window.innerHeight;
+  const panel = document.getElementById('panel');
+  const right = panel ? panel.getBoundingClientRect().right : 0;
+  const dx = w > 760 ? Math.min(right, w * 0.45) * 0.6 : 0;
+  const dy = h * 0.05;
+  camera.aspect = w / h;
+  camera.setViewOffset(w, h, -dx, -dy, w, h);
+}
+frameCity();
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
+  frameCity();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
