@@ -3128,6 +3128,7 @@ async function applyRemoved(done) {
   renderDisk();
   renderClean();
   layout();
+  if (!binBusy) refreshBin();
 }
 // Turns one delete's results into what applyRemoved needs.
 function removedFrom(item, res, mode) {
@@ -3471,6 +3472,74 @@ $('btn-safe').onclick = async () => {
   await moveToTrash(items);
 };
 
+// Empty Bin button (Safe Clean tab): empties the Trash / Recycle Bin for good,
+// after a confirm showing what it frees. Never counts against the free monthly limit.
+let binBusy = false;
+let binAsk = false;
+async function refreshBin() {
+  if (DEMO || !api.binInfo) {
+    const g = state.suggestions && state.suggestions.trash;
+    const it = g && g.items[0];
+    state.bin = it ? { ...it, size: g.total } : state.bin ? { ...state.bin, size: 0 } : null;
+  } else {
+    state.bin = await api.binInfo().catch(() => state.bin || null);
+  }
+  renderBin();
+}
+function renderBin() {
+  const box = $('bin-actions');
+  if (!box) return;
+  const bin = state.bin;
+  const size = bin ? bin.size : 0;
+  if (binBusy) {
+    box.innerHTML = '<button class="bin-btn" disabled>Emptying the Trash…</button>';
+    return;
+  }
+  if (binAsk && size > 0) {
+    box.innerHTML = `<button id="btn-bin-yes" class="danger">Yes, empty the Trash for good (${fmt(size)})</button><button id="btn-bin-no" class="bin-btn">Keep it</button>`;
+    $('btn-bin-yes').onclick = emptyBin;
+    $('btn-bin-no').onclick = () => {
+      binAsk = false;
+      renderBin();
+    };
+    return;
+  }
+  binAsk = false;
+  box.innerHTML = `<button id="btn-bin" class="bin-btn" ${size > 0 ? '' : 'disabled'} title="Permanently deletes what is already in the Trash">🗑 ${size > 0 ? `Empty the Trash · ${fmt(size)}` : bin ? 'The Trash is empty' : 'Empty the Trash'}</button>`;
+  $('btn-bin').onclick = () => {
+    binAsk = true;
+    renderBin();
+  };
+}
+async function emptyBin() {
+  const bin = state.bin;
+  if (!bin || binBusy) return;
+  binBusy = true;
+  binAsk = false;
+  renderBin();
+  try {
+    const res = await api.emptyFolder(bin.path);
+    const bad = res.filter((r) => !r.ok);
+    if (bad.length && bad.length === res.length) trashError(bad[0]);
+    else {
+      toast(`Emptied the Trash${bad.length ? ` · ${bad.length} item${bad.length > 1 ? 's' : ''} couldn't be removed` : ''}. ${fmt(bin.size)} freed.`);
+      // Scan covers the bin: shrink it in place. Otherwise just refresh free space.
+      const inScan = state.tree && chainTo(bin.path);
+      if (inScan) await applyRemoved(removedFrom(bin, res, 'empty'));
+      else {
+        if (DEMO && state.disk && state.disk.roots[0]) state.disk.roots[0].free += bin.size;
+        else state.disk = await api.diskInfo().catch(() => state.disk);
+        if (state.suggestions && state.suggestions.trash) state.suggestions.trash = { items: [], total: 0 };
+        renderDisk();
+        renderClean();
+      }
+    }
+  } finally {
+    binBusy = false;
+    await refreshBin();
+  }
+}
+
 function renderClean() {
   renderSafe();
   const wrap = $('clean-groups');
@@ -3639,6 +3708,7 @@ async function runScan(root) {
     renderDisk();
     renderClean();
     layout();
+    refreshBin();
     pro.loadDeep();
   } catch (err) {
     if (!/aborted/.test(String(err))) toast('Scan failed: ' + (err.message || err));
@@ -3717,6 +3787,7 @@ const perf = initPerformance({ api, fmt, esc, toast, DEMO });
 const maint = initMaintenance({ api, esc, toast, DEMO });
 drives = initDrives({ api, esc, toast, runScan, DEMO });
 if (DEMO) $('btn-scan').querySelector('span').textContent = 'Scan (demo data)';
+refreshBin();
 // Scan straight away at launch: no need to press Scan.
 runScan(DEMO ? null : lastRoot());
 

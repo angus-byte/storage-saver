@@ -244,3 +244,6 @@ button.link { background: none; border: none; color: var(--accent); padding: 0 4
 #safe-list .name small { display: block; color: var(--muted); font-size: 11.5px; }
 #safe-list .size { font-weight: 600; font-variant-numeric: tabular-nums; }
 .safe-btn { width: 100%; padding: 13px; font-size: 14.5px; }
+.bin-actions { display: flex; gap: 8px; margin-top: 8px; }
+.bin-actions button { flex: 1; padding: 10px; font-size: 13px; border-radius: 12px; }
+.bin-actions button.danger { width: auto; margin-top: 0; flex: 2; }
