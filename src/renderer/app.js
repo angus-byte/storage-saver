@@ -6,7 +6,7 @@ import { initPrivacy } from './privacy.js';
 import { initPerformance } from './perf.js';
 import { initMaintenance } from './maintenance.js';
 import { squarify } from './treemap.js';
-import { categorize, CATEGORIES, fileRowClick } from './categories.js';
+import { categorize, CATEGORIES, fileRowClick, quickCategory } from './categories.js';
 import { mockTree, mockSuggestions, mockDisk } from './mock.js';
 import { initPro, demoPlanApi, mockDeep } from './pro.js';
 import { initSeasons } from './seasons.js';
@@ -2840,7 +2840,19 @@ function siteBuilding(item) {
   site.maxSeen = Math.max(site.maxSeen || 1, item.size);
   maxSizeInView = site.maxSeen;
   const side = sc.sw + 0.8;
-  const r = { x: sc.cx - side / 2, y: sc.cz - side / 2, w: side, h: side, item: { size: side * side, item } };
+  // Use one of the city's building models: the folder's own category when the
+  // name gives it away, otherwise a model the site hasn't shown yet.
+  site.usedCats = site.usedCats || new Set();
+  let category = quickCategory(item);
+  if (!category || !landmarkModels[MODEL_FOR_CATEGORY[category]]) {
+    const avail = Object.keys(MODEL_FOR_CATEGORY).filter((c) => c !== 'sysother' && landmarkModels[MODEL_FOR_CATEGORY[c]]);
+    const fresh = avail.filter((c) => !site.usedCats.has(MODEL_FOR_CATEGORY[c]));
+    const pool = fresh.length ? fresh : avail;
+    category = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+  }
+  if (category) site.usedCats.add(MODEL_FOR_CATEGORY[category]);
+  const shown = category ? { ...item, category } : item;
+  const r = { x: sc.cx - side / 2, y: sc.cz - side / 2, w: side, h: side, item: { size: side * side, item: shown } };
   const h = placeBuilding(r, 1, 0);
   addLabel(item, sc.cx, 1.1 + h + 2, sc.cz, Math.min(side + 8, 24));
   if (labelPairs.length) {

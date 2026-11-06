@@ -106,6 +106,18 @@ export function typesOf(node) {
 }
 
 /** Category for a folder or file that has no well-known name. */
+// Best guess at a top-level folder's category from its name and kind alone,
+// for the construction site while the scan is still running.
+export function quickCategory(item) {
+  const n = (item.name || '').toLowerCase();
+  const named = NAMED[n];
+  if (named === 'split') return 'library';
+  if (named) return named;
+  if (item.kind === 'cache' || item.kind === 'trash') return item.kind;
+  if (n.startsWith('.')) return 'library';
+  return null;
+}
+
 export function categoryByContent(node, rootKind = 'other') {
   const n = (node.name || '').toLowerCase();
   // Kind comes from the full path; ignore it when the scanned folder itself sits in a cache/trash path.

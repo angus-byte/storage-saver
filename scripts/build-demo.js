@@ -21,7 +21,7 @@ app = app
   .replace("import * as THREE from './vendor/three.module.js';", "import * as THREE from 'three';")
   .replace("import { OrbitControls } from './vendor/OrbitControls.js';", "import { OrbitControls } from 'three/addons/controls/OrbitControls.js';")
   .replace("import { squarify } from './treemap.js';\n", '')
-  .replace("import { categorize, CATEGORIES, fileRowClick } from './categories.js';\n", '')
+  .replace("import { categorize, CATEGORIES, fileRowClick, quickCategory } from './categories.js';\n", '')
   .replace("import { mockTree, mockSuggestions, mockDisk } from './mock.js';\n", '')
   .replace("import { initPro, demoPlanApi, mockDeep } from './pro.js';\n", '')
   .replace("import { initSeasons } from './seasons.js';\n", '')
