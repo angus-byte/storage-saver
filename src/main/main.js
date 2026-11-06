@@ -494,6 +494,19 @@ async function trashPaths(paths) {
   return results;
 }
 
+// The Empty Bin button: where this person's Trash / Recycle Bin is and how big it is.
+ipcMain.handle('bin:info', async () => {
+  try {
+    if (WIN) return await cityhallWin.recycleBin(os.homedir());
+    const p = path.join(os.homedir(), '.Trash');
+    let size = 0;
+    for (const e of await fsp.readdir(p)) if (e !== '.DS_Store' && e !== '.localized') size += await sizeOf(path.join(p, e));
+    return { name: 'Trash', path: p, size, kind: 'trash', mtime: Date.now(), isDir: true };
+  } catch {
+    return null;
+  }
+});
+
 // Empties the contents of a folder (e.g. a cache dir) into the Trash, keeping the folder itself.
 ipcMain.handle('fs:emptyFolder', async (_e, dir) => {
   const results = await emptyFolder(dir);

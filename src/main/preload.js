@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('storage', {
   removeDrive: (root) => ipcRenderer.invoke('drives:remove', root),
   trash: (paths) => ipcRenderer.invoke('fs:trash', paths),
   emptyFolder: (dir) => ipcRenderer.invoke('fs:emptyFolder', dir),
+  binInfo: () => ipcRenderer.invoke('bin:info'),
   protectedPaths: () => ipcRenderer.invoke('fs:protected'),
   permStatus: () => ipcRenderer.invoke('perm:status'),
   openPermissions: () => ipcRenderer.invoke('perm:open'),
