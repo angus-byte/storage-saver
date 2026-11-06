@@ -3565,6 +3565,21 @@ async function ensureAccess() {
   });
 }
 
+// The last folder or drive scanned is remembered and scanned again at launch.
+function lastRoot() {
+  try {
+    return localStorage.getItem('ss-last-root') || null;
+  } catch {
+    return null;
+  }
+}
+function rememberRoot(root) {
+  try {
+    if (root) localStorage.setItem('ss-last-root', root);
+    else localStorage.removeItem('ss-last-root');
+  } catch {}
+}
+
 async function runScan(root) {
   if (state.scanning) return;
   if (!(await ensureAccess())) return;
@@ -3596,6 +3611,7 @@ async function runScan(root) {
     }
     const { tree, suggestions } = result;
     state.tree = tree;
+    rememberRoot(root);
     if (tree.skipped && tree.skipped.length) {
       const names = [...new Set(tree.skipped.map((s) => s.label))];
       setTimeout(() => toast(`Left out ${names.slice(0, 3).join(', ')}${names.length > 3 ? '…' : ''} so nothing synced gets deleted. Add drives with the drive button.`), 400);
@@ -3609,6 +3625,8 @@ async function runScan(root) {
     pro.loadDeep();
   } catch (err) {
     if (!/aborted/.test(String(err))) toast('Scan failed: ' + (err.message || err));
+    // A remembered folder that is gone (unplugged drive, deleted) falls back to home next time.
+    if (root && root === lastRoot()) rememberRoot(null);
     layout();
   } finally {
     off();
@@ -3681,10 +3699,9 @@ initPrivacy({ api, fmt, esc, toast, pro, DEMO });
 const perf = initPerformance({ api, fmt, esc, toast, DEMO });
 const maint = initMaintenance({ api, esc, toast, DEMO });
 drives = initDrives({ api, esc, toast, runScan, DEMO });
-if (DEMO) {
-  $('btn-scan').querySelector('span').textContent = 'Scan (demo data)';
-  runScan(null);
-}
+if (DEMO) $('btn-scan').querySelector('span').textContent = 'Scan (demo data)';
+// Scan straight away at launch: no need to press Scan.
+runScan(DEMO ? null : lastRoot());
 
 // Exposed for automated UI checks.
 window.__storageSaver = { perf, maint, state, openCategory, layout, toggleNight, dayCycle: (p) => (p === undefined ? { auto: autoCycle, p: cycleP, nightK } : (cycleP = p)), buildSite, setScanProgress, pro, seasons, camera, controls, blocks };
