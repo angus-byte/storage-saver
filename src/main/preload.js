@@ -61,4 +61,6 @@ contextBridge.exposeInMainWorld('storage', {
   // Public Works (Maintenance tab)
   maintList: () => ipcRenderer.invoke('maint:list'),
   maintRun: (ids) => ipcRenderer.invoke('maint:run', ids),
+  sysSpace: (scanRoot) => ipcRenderer.invoke('sys:space', scanRoot),
+  openUsers: () => ipcRenderer.invoke('sys:openUsers'),
 });

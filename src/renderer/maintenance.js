@@ -50,6 +50,9 @@ function createMockMaintenance(win) {
     ['firstaid', '🩺', 'Check the disk (First Aid)', 'Building inspection', 'Checks your startup disk for errors. Your Mac may pause for a moment while it runs.', null, false, false, false, 'Your startup disk looks healthy.'],
     ['perms', '🔑', 'Repair home folder permissions', 'Re-key the front doors', 'Fixes “you don’t have permission” errors on your own files and folders.', null, true, false, false, 'Home folder permissions repaired.'],
     ['snapshots', '🕰', 'Clear Time Machine snapshots', 'Clear the archive basement', 'Removes the local snapshots Time Machine keeps on this Mac. Often frees many GB of “System Data”. Backups on your backup drive are not touched.', null, true, false, false, 'Local Time Machine snapshots cleared. The space shows as free within a minute or two.'],
+    ['syscaches', '🧺', 'Clear shared system caches', 'Empty the town skips', 'Deletes the caches in /Library/Caches that apps share across all users. They rebuild as needed. Part of “System Data”.', null, true, false, false, 'Shared caches cleared. Apps rebuild what they need.'],
+    ['syslogs', '📜', 'Clear old system logs and temp files', 'Shred the old paperwork', 'Deletes system logs and crash reports older than a week, and leftover temp files older than three days.', null, true, false, false, 'Old logs, crash reports and temp files cleared.'],
+    ['brew', '🍺', 'Clean up Homebrew', 'Clear the brewery yard', 'Removes old versions and downloads that Homebrew keeps after updates. Installed tools stay.', null, false, false, false, 'Homebrew cleaned up.'],
     ['spotlight', '📚', 'Rebuild the Spotlight index', 'Re-catalogue the library', 'Fixes search that misses files or shows ones you deleted.', 'Search results stay incomplete while it rebuilds, which can take an hour.', true, false, false, 'Spotlight is re-indexing in the background. Searches fill back in over the next hour.'],
   ];
   const pc = [
@@ -205,5 +208,28 @@ export function initMaintenance({ api, esc, toast, DEMO }) {
     }
     tabBtn.click();
   }
-  return { open, reload: load };
+  // run(['snapshots']): run jobs from elsewhere (the System building) and
+  // show their results here too. Resolves to { ok, results, error? }.
+  async function run(ids) {
+    if (running) return { ok: false, error: 'Other jobs are still running in Maintenance.' };
+    if (!data) (loaded = true), await load();
+    running = true;
+    let r;
+    try {
+      r = await svc.run(ids);
+    } catch (err) {
+      r = { ok: false, error: String((err && err.message) || err) };
+    }
+    running = false;
+    if (r.lastRun) data.lastRun = r.lastRun;
+    for (const x of r.results || []) results.set(x.id, x);
+    render();
+    return r;
+  }
+  // The jobs this computer has (so the System page only offers real ones).
+  async function jobs() {
+    if (!data) (loaded = true), await load();
+    return data ? data.tasks : [];
+  }
+  return { open, reload: load, run, jobs };
 }

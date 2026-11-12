@@ -3302,9 +3302,10 @@ const SYS_PARTS = IS_WIN
       ['👥', 'Other users on this Mac', 'Their files are private to them.'],
     ];
 function renderSysOther(wrap) {
-  const total = state.disk && state.disk.roots[0] ? Math.max(0, state.disk.roots[0].total - state.disk.roots[0].free - (state.tree ? state.tree.size : 0)) : 0;
+  const total = sysTotal();
   $('files-head').innerHTML = `<button class="link" id="files-back">‹ All</button><span class="cat-title"><span class="dot" style="background:${hexColor('system')}"></span>System &amp; other users</span><span class="muted">${fmt(total)}</span>`;
   $('files-back').onclick = () => openCategory(null);
+  if (!IS_WIN && (api.sysSpace || DEMO)) return renderSysMac(wrap, total);
   wrap.innerHTML = `<p class="hint" style="margin:0 2px 8px">Space used on your disk outside your home folder. It isn’t files you made, and deleting things here by hand can break your ${IS_WIN ? 'PC' : 'Mac'}, so there is nothing to Demolish. What it usually holds:</p>
     <ul class="file-list sys-parts">${SYS_PARTS.map(([i, n, d]) => `<li class="row"><span class="icon">${i}</span><span class="name">${esc(n)}<small>${esc(d)}</small></span></li>`).join('')}</ul>
     <div class="row-actions" style="padding-left:0">
@@ -3314,7 +3315,200 @@ function renderSysOther(wrap) {
     </div>`;
   wrap.querySelector('[data-act="snap"]').onclick = () => maint && maint.open && maint.open([IS_WIN ? 'cleanup' : 'snapshots']);
   wrap.querySelector('[data-act="safe"]').onclick = () => showTab('safe');
-  wrap.querySelector('[data-act="apps"]').onclick = () => (cityHall && cityHall.open ? cityHall.open() : showTab('hall'));
+  wrap.querySelector('[data-act="apps"]').onclick = openUninstaller;
+}
+const sysTotal = () => (state.disk && state.disk.roots[0] ? Math.max(0, state.disk.roots[0].total - state.disk.roots[0].free - (state.tree ? state.tree.size : 0)) : 0);
+const openUninstaller = () => (cityHall && cityHall.open ? cityHall.open() : showTab('hall'));
+
+// --- System & other users on a Mac: measured parts, each with its safe clean.
+// Only fixed, safe actions are offered: Time Machine snapshots, shared caches,
+// old logs and temp files, Homebrew leftovers, files in /Users/Shared (to the
+// Trash), apps (Uninstaller) and other accounts (System Settings). macOS
+// itself and swap are never touched.
+let sysLoading = null;
+function loadSys(force) {
+  if (force) state.sys = null;
+  if (state.sys || sysLoading) return sysLoading;
+  const get = DEMO ? demoSysSpace : () => api.sysSpace(state.tree && state.tree.path);
+  sysLoading = Promise.resolve(get())
+    .catch(() => null)
+    .then((r) => {
+      state.sys = r || { parts: [], failed: true };
+      sysLoading = null;
+      if (state.open === SYS_OTHER) renderFiles();
+    });
+  return sysLoading;
+}
+// What each part is, and the clean it offers. job: a Maintenance job id.
+const SYS_INFO = {
+  purgeable: { desc: (p) => `${p.snapshots ? `${p.snapshots} local Time Machine snapshot${p.snapshots > 1 ? 's' : ''}, plus` : 'Mostly'} space macOS can free on its own. Backups on your backup drive are not touched.`, job: 'snapshots', btn: (p) => `🕰 Clear ${p.snapshots ? p.snapshots + ' ' : ''}snapshot${p.snapshots === 1 ? '' : 's'}`, ask: 'Delete the local Time Machine snapshots on this Mac? Your backup drive keeps its backups.', freed: 0.9 },
+  var: { desc: () => 'Logs, crash reports, temp files and system databases.', job: 'syslogs', btn: () => '📜 Clear old logs and temp files', ask: 'Delete system logs and crash reports older than a week, and temp files older than three days?', freed: 0.25 },
+  library: { desc: () => 'Fonts, drivers, plug-ins and caches shared by all users.', job: 'syscaches', btn: () => '🧺 Clear shared caches', ask: 'Delete the shared caches in /Library/Caches? Apps rebuild what they need.', freed: 0.15 },
+  dev: { desc: () => 'Homebrew packages and developer tools.', job: 'brew', btn: () => '🍺 Clean up Homebrew', ask: 'Remove old Homebrew versions and downloads? Installed tools stay.', freed: 0.3 },
+  apps: { desc: () => 'Remove apps (and their leftovers) in App Uninstaller.' },
+  shared: { desc: () => 'Files any user on this Mac can open. Pick one below to move it to the Trash.', trash: true },
+  users: { desc: (p) => (p.private ? 'Their files are private. To delete an account and its files, use Users & Groups.' : 'To delete an account and its files, use Users & Groups.') },
+  swap: { desc: () => 'Virtual memory and the sleep image. macOS manages these; a restart shrinks them.' },
+  rest: { desc: () => 'Sealed by Apple, plus anything Gigapolis can’t read. It can’t be removed.' },
+};
+async function renderSysMac(wrap, total) {
+  const tok = (renderSysMac.tok = (renderSysMac.tok || 0) + 1);
+  wrap.innerHTML = `<p class="hint" style="margin:0 2px 8px">Space used outside your home folder. Tap a part to see what is safe to clear. macOS itself and other people’s files are never touched.</p>`;
+  if (!state.sys) {
+    wrap.insertAdjacentHTML('beforeend', '<div class="muted" style="padding:6px 2px">🔎 Measuring what’s in here… (up to a minute)</div>');
+    loadSys();
+    return;
+  }
+  const jobs = maint && maint.jobs ? await maint.jobs().catch(() => []) : [];
+  if (state.open !== SYS_OTHER || tok !== renderSysMac.tok) return;
+  const hasJob = (id) => jobs.some((t) => t.id === id);
+  const parts = [...state.sys.parts];
+  const known = parts.reduce((n, p) => n + p.size, 0);
+  if (total > known) parts.push({ id: 'rest', icon: '🍎', name: 'macOS itself & locked data', size: total - known, children: [] });
+  const ul = document.createElement('ul');
+  ul.className = 'file-list sys-parts';
+  for (const part of bySize(parts)) {
+    const info = SYS_INFO[part.id] || { desc: () => '' };
+    const li = document.createElement('li');
+    li.innerHTML = `<div class="row"><span class="chev">${(part.children || []).length ? '›' : ''}</span><span class="icon">${part.icon}</span><span class="name">${esc(part.name)}<small>${esc(info.desc(part))}</small></span><span class="size">${fmt(part.size)}</span></div>`;
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+    const show = () => {
+      const btns = [];
+      if (info.job && hasJob(info.job) && part.size > 0) btns.push(`<button data-act="job" class="demolish">${esc(info.btn(part))}</button>`);
+      if (part.id === 'apps') btns.push('<button data-act="apps">📦 App Uninstaller</button>');
+      if (part.id === 'users') btns.push('<button data-act="users">👥 Open Users &amp; Groups</button>');
+      if (part.path) btns.push('<button data-act="reveal">📍 Show in Finder</button>');
+      actions.innerHTML = btns.join('') || `<span class="muted">${part.id === 'swap' ? 'Nothing to clear by hand.' : 'Has to stay.'}</span>`;
+    };
+    actions.onclick = async (e) => {
+      const act = e.target.closest('[data-act]');
+      if (!act) return;
+      const a = act.dataset.act;
+      if (a === 'reveal') api.reveal(part.path);
+      else if (a === 'apps') openUninstaller();
+      else if (a === 'users') (api.openUsers ? api.openUsers() : toast('Demo mode: would open System Settings › Users & Groups'));
+      else if (a === 'keep') show();
+      else if (a === 'job') actions.innerHTML = `<span class="muted">${esc(info.ask)}${jobs.find((t) => t.id === info.job && t.admin) ? ' macOS asks for your password.' : ''}</span><button data-act="go" class="demolish">Yes, clear it</button><button data-act="keep">Keep it</button>`;
+      else if (a === 'go') {
+        actions.innerHTML = '<span class="muted">🚧 Crews at work…</span>';
+        await runSysJob(part, info);
+      }
+    };
+    const kids = document.createElement('ul');
+    kids.className = 'file-list';
+    for (const c of bySize(part.children || []).slice(0, 12)) kids.appendChild(sysChild(c, part, info));
+    li.firstChild.onclick = () => {
+      const on = !li.classList.contains('picked');
+      for (const o of wrap.querySelectorAll('li.picked')) o.classList.remove('picked', 'open');
+      for (const o of wrap.querySelectorAll('.sys-parts > li > .row-actions, .sys-parts > li > ul')) o.remove();
+      if (!on) return;
+      li.classList.add('picked', 'open');
+      show();
+      li.appendChild(actions);
+      if (kids.children.length) li.appendChild(kids);
+    };
+    ul.appendChild(li);
+  }
+  wrap.appendChild(ul);
+  if (state.sys.failed) wrap.insertAdjacentHTML('beforeend', '<p class="hint">Couldn’t measure this part of the disk. Turn on Full Disk Access for Gigapolis and open this building again.</p>');
+  wrap.insertAdjacentHTML('beforeend', '<div class="row-actions" style="padding-left:0"><button data-act="safe">🧹 Safe Clean caches</button><button data-act="re">🔄 Measure again</button></div>');
+  wrap.querySelector('[data-act="safe"]').onclick = () => showTab('safe');
+  wrap.querySelector('[data-act="re"]').onclick = () => (loadSys(true), renderFiles());
+}
+// One folder inside a part. In /Users/Shared it can go to the Trash.
+function sysChild(c, part, info) {
+  const li = document.createElement('li');
+  li.innerHTML = `<div class="row"><span class="chev"></span><span class="icon">${part.id === 'users' ? '👤' : '📁'}</span><span class="name" title="${esc(c.path)}">${esc(c.name)}${c.private ? '<small>Private: only that user can see inside</small>' : ''}</span><span class="size">${c.private && !c.size ? '—' : fmt(c.size)}</span></div>`;
+  const actions = document.createElement('div');
+  actions.className = 'row-actions';
+  const show = () => {
+    actions.innerHTML = (c.private ? '' : '<button data-act="reveal">📍 Show in Finder</button>') + (info.trash ? '<button data-act="demolish" class="demolish">🧨 Demolish</button>' : '');
+  };
+  actions.onclick = async (e) => {
+    e.stopPropagation();
+    const act = e.target.closest('[data-act]');
+    if (!act) return;
+    const a = act.dataset.act;
+    if (a === 'reveal') api.reveal(c.path);
+    else if (a === 'keep') show();
+    else if (a === 'demolish') actions.innerHTML = `<span class="muted">Every user on this Mac loses it.</span><button data-act="confirm" class="demolish">Yes, demolish ${fmt(c.size)}</button><button data-act="keep">Keep it</button>`;
+    else if (a === 'confirm') {
+      const res = await api.trash([c.path]);
+      if (pro.handleBlocked(res)) return show();
+      const bad = res.find((r) => !r.ok);
+      if (bad) return trashError(bad), show();
+      part.children = part.children.filter((x) => x !== c);
+      part.size = Math.max(0, part.size - c.size);
+      toast(`Demolished ${c.name} (${fmt(c.size)}). Empty the Trash to reclaim the space.`);
+      addToBin(c.size);
+      await afterSysClean(0);
+    }
+  };
+  li.firstChild.onclick = (e) => {
+    e.stopPropagation();
+    const on = !li.classList.contains('picked');
+    li.classList.toggle('picked', on);
+    if (on) show(), li.appendChild(actions);
+    else actions.remove();
+  };
+  return li;
+}
+async function runSysJob(part, info) {
+  const r = maint && maint.run ? await maint.run([info.job]) : { ok: false, error: 'Maintenance isn’t available.' };
+  const res = (r.results || [])[0];
+  if (r.error) toast(r.error);
+  else if (res && res.cancelled) toast('Cancelled. Nothing was cleared.');
+  else if (res) toast((res.ok ? '' : '✕ ') + res.message);
+  let freed = 0;
+  if (res && res.ok && DEMO) {
+    freed = Math.round(part.size * info.freed);
+    part.size -= freed;
+    if (part.id === 'purgeable') part.snapshots = 0;
+  }
+  await afterSysClean(freed, !DEMO && res && res.ok);
+}
+// Disk numbers changed: refresh them, re-measure, and redraw the building.
+async function afterSysClean(freed, remeasure = true) {
+  if (DEMO) {
+    if (freed && state.disk && state.disk.roots[0]) state.disk.roots[0].free += freed;
+  } else {
+    state.disk = await api.diskInfo().catch(() => state.disk);
+    // Snapshot space shows up as free a little after tmutil returns.
+    if (remeasure) loadSys(true);
+  }
+  renderDisk();
+  layout();
+  if (state.open === SYS_OTHER) renderFiles();
+}
+// Demo: a believable Mac, scaled to the demo disk. Kept between clicks.
+let demoSys = null;
+async function demoSysSpace() {
+  await new Promise((r) => setTimeout(r, 700));
+  if (!demoSys) {
+    const T = sysTotal();
+    const GB = 1024 ** 3;
+    const part = (id, icon, name, k, extra = {}) => ({ id, icon, name, size: Math.round(T * k), children: [], ...extra });
+    const lib = part('library', '🏛', 'Shared Library (all users)', 0.1, { path: '/Library' });
+    lib.children = [['Application Support', 0.45], ['Caches', 0.25], ['Audio', 0.18], ['Fonts', 0.05]].map(([n, k]) => ({ name: n, path: '/Library/' + n, size: Math.round(lib.size * k) }));
+    const shared = part('shared', '🤝', 'Shared folder', 0.035, { path: '/Users/Shared' });
+    shared.children = [['Old Projects 2021', 0.6], ['Adobe Installers', 0.3], ['Sample Library', 0.1]].map(([n, k]) => ({ name: n, path: '/Users/Shared/' + n, size: Math.round(shared.size * k) }));
+    const users = part('users', '👥', 'Other users on this Mac', 0.03, { private: true });
+    users.children = [{ name: 'studio', path: '/Users/studio', size: 0, private: true }];
+    demoSys = {
+      parts: [
+        part('purgeable', '🕰', 'Snapshots & purgeable space', 0.42, { snapshots: 6 }),
+        part('apps', '📦', 'Apps in Applications', 0.13, { path: '/Applications' }),
+        lib,
+        part('var', '🗄', 'System logs, temp and caches', 0.07, { path: '/private/var' }),
+        part('dev', '🛠', 'Homebrew and developer tools', 0.03, { path: '/opt' }),
+        shared,
+        users,
+        part('swap', '💤', 'Swap and sleep files', Math.min(0.03, (6 * GB) / Math.max(T, 1)), { path: '/System/Volumes/VM' }),
+      ],
+    };
+  }
+  return { parts: demoSys.parts, measuredAt: Date.now() };
 }
 
 function renderFiles() {
@@ -3683,6 +3877,7 @@ async function runScan(root) {
   if (state.scanning) return;
   if (!(await ensureAccess())) return;
   state.scanning = true;
+  state.sys = null; // System & other users is re-measured after a new scan
   $('btn-scan').disabled = true;
   $('progress').hidden = false;
   tooltip.hidden = true;

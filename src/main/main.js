@@ -19,6 +19,7 @@ const protection = createProtection();
 const { createDrives, driveMessage } = require('./drives');
 const { createMonitor } = require('./perf');
 const { createMaintenance } = require('./maintenance');
+const { createSysSpace } = require('./sysspace');
 let drives = createDrives(); // reloaded with the saved opt-ins once userData is known
 const driveBlock = (p) => {
   const c = drives.blocked(p);
@@ -921,3 +922,20 @@ let maintenance = null;
 const getMaintenance = () => (maintenance ||= createMaintenance({ dir: app.getPath('userData') }));
 ipcMain.handle('maint:list', () => getMaintenance().list());
 ipcMain.handle('maint:run', (_e, ids) => getMaintenance().run(Array.isArray(ids) ? ids.slice(0, 20).map(String) : []));
+
+// --- "System & other users": what's in it (macOS) ------------------------------
+let sysSpace = null;
+ipcMain.handle('sys:space', async (_e, scanRoot) => {
+  sysSpace ||= createSysSpace();
+  let free = 0;
+  try {
+    const st = await fsp.statfs('/');
+    free = st.bavail * st.bsize;
+  } catch {}
+  return sysSpace.measure({ scanRoot: isAbs(scanRoot) ? scanRoot : os.homedir(), free }).catch(() => null);
+});
+// Other people's accounts can only be removed (with their files) in System Settings.
+ipcMain.handle('sys:openUsers', () => {
+  if (process.platform === 'darwin') shell.openExternal('x-apple.systempreferences:com.apple.Users-Groups-Settings.extension');
+  return true;
+});

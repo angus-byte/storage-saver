@@ -20,6 +20,7 @@ const LSREGISTER = '/System/Library/Frameworks/CoreServices.framework/Frameworks
 // timeout: ms. ok/fail: shown after the run.
 function macTasks({ uid = process.getuid ? process.getuid() : 501, exists = fs.existsSync } = {}) {
   const u = Number.isInteger(uid) && uid >= 0 ? uid : 501;
+  const brew = ['/opt/homebrew/bin/brew', '/usr/local/bin/brew'].find((b) => exists(b));
   return [
     {
       id: 'dns',
@@ -111,6 +112,44 @@ function macTasks({ uid = process.getuid ? process.getuid() : 501, exists = fs.e
       timeout: 10 * MIN,
       ok: 'Local Time Machine snapshots cleared. The space shows as free within a minute or two.',
     },
+    {
+      id: 'syscaches',
+      icon: '🧺',
+      name: 'Clear shared system caches',
+      city: 'Empty the town skips',
+      desc: 'Deletes the caches in /Library/Caches that apps share across all users. They rebuild as needed. Part of “System Data”.',
+      admin: true,
+      sh: '/usr/bin/find /Library/Caches -mindepth 1 -maxdepth 1 -exec /bin/rm -rf {} + 2>/dev/null; exit 0',
+      timeout: 10 * MIN,
+      ok: 'Shared caches cleared. Apps rebuild what they need.',
+    },
+    {
+      id: 'syslogs',
+      icon: '📜',
+      name: 'Clear old system logs and temp files',
+      city: 'Shred the old paperwork',
+      desc: 'Deletes system logs and crash reports older than a week, and leftover temp files older than three days.',
+      admin: true,
+      sh: '/usr/bin/find /private/var/log /Library/Logs -type f -mtime +7 -delete 2>/dev/null; /usr/bin/find /private/var/tmp -mindepth 1 -mtime +3 -delete 2>/dev/null; exit 0',
+      timeout: 10 * MIN,
+      ok: 'Old logs, crash reports and temp files cleared.',
+    },
+    ...(brew
+      ? [
+          {
+            id: 'brew',
+            icon: '🍺',
+            name: 'Clean up Homebrew',
+            city: 'Clear the brewery yard',
+            desc: 'Removes old versions and downloads that Homebrew keeps after updates. Installed tools stay.',
+            admin: false,
+            cmd: brew,
+            args: ['cleanup', '--prune=all'],
+            timeout: 10 * MIN,
+            ok: 'Homebrew cleaned up.',
+          },
+        ]
+      : []),
     {
       id: 'spotlight',
       icon: '📚',
