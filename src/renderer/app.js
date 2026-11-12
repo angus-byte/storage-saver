@@ -705,14 +705,15 @@ function applyNight() {
   scene.fog.near = (320 - 150 * warm) * CITY_SCALE;
   scene.fog.far = (700 - 200 * warm) * CITY_SCALE;
   hemi.color.lerp(_c2.setHex(0xffb98a), warm * 0.55);
-  hemi.intensity = 0.4 + (0.35 - 0.4) * k;
+  hemi.intensity = 0.4 + (0.75 - 0.4) * k; // brighter ambient at night so facades stay readable
   fill.intensity = 0.12 + (0.15 - 0.12) * k;
   // Softer shadow edges while the sun is moving, so they glide rather than shimmer.
   key.shadow.radius = (autoCycle ? 6 : 1.5) + 4.5 * k;
-  renderer.toneMappingExposure = 0.98 + (0.95 - 0.98) * k;
+  renderer.toneMappingExposure = 0.98 + (1.1 - 0.98) * k;
   scene.environment = k < 0.5 ? envDay : envNight;
   scene.environmentIntensity = k < 0.5 ? 0.28 * (1 - k * 1.4) : 0.3 * (k - 0.3);
-  // Sun: warm and high → low orange at the horizon → cool moonlight from the other side.
+  // Sun: warm and high → low orange at the horizon → cool moonlight from the
+  // camera's side, so it lights the building faces seen in the default view.
   if (k < 0.5) {
     const u = k / 0.5;
     key.color.copy(lerpHex(_c1, 0xffe6c4, 0xff7a3d, Math.min(1, u * 1.6)));
@@ -721,8 +722,8 @@ function applyNight() {
   } else {
     const u = (k - 0.5) / 0.5;
     key.color.copy(lerpHex(_c1, 0xff7a3d, 0x9fb4ff, u));
-    key.intensity = 1.1 + (0.55 - 1.1) * u;
-    key.position.set(170 + (-90 - 170) * u, 14 + (130 - 14) * u, -40 + (-70 + 40) * u).multiplyScalar(CITY_SCALE);
+    key.intensity = 1.1 + (1.5 - 1.1) * u;
+    key.position.set(170 + (90 - 170) * u, 14 + (130 - 14) * u, -40 + (160 + 40) * u).multiplyScalar(CITY_SCALE);
   }
   applySunAngle();
   stars.visible = k > 0.02;
