@@ -47,9 +47,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand-text { flex: 1; min-width: 0; }
 h1 { font-size: 15px; margin: 0; letter-spacing: 0.1px; font-weight: 700; }
-.logo { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(160deg, #7fe0d8, #15a39a); display: flex; align-items: flex-end; justify-content: center; gap: 3px; padding: 0 0 6px; flex: none; box-shadow: 0 4px 10px rgba(21, 163, 154, 0.35); }
-.logo i { display: block; width: 5px; background: #fff; border-radius: 1px; }
-.logo i:nth-child(1) { height: 10px; } .logo i:nth-child(2) { height: 17px; } .logo i:nth-child(3) { height: 13px; }
+.logo { width: 36px; height: 36px; flex: none; display: block; filter: drop-shadow(0 3px 6px rgba(30, 110, 200, 0.3)); }
 button.icon { width: 30px; height: 30px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: var(--soft); border: none; color: var(--text); flex: none; transition: transform 0.25s ease, background 0.15s; }
 button.icon:hover { background: var(--soft-2); }
 #panel:not(.collapsed) button.icon { transform: rotate(180deg); }
