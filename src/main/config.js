@@ -1,15 +1,17 @@
-// Gigapolis Pro settings. Fill these in from the Lemon Squeezy dashboard
-// (Store → Settings for the store id, Products → Gigapolis Pro for the
-// product id and the checkout "Share" link). Environment variables override
-// them, which is handy for testing a build without editing the file.
+// Gigapolis Pro settings. Pro is sold with Stripe through getgigapolis.com/buy,
+// and licence keys are issued and checked by the site's Cloudflare functions
+// (functions/api/licence). Environment variables override these, which is
+// handy for testing a build against a preview deployment.
 const GB = 1024 ** 3;
 
 module.exports = {
   // Checkout page opened by "Buy Pro".
-  checkoutUrl: process.env.GIGAPOLIS_CHECKOUT_URL || 'https://gigapolis.lemonsqueezy.com/checkout/buy/d9c533fc-fe6a-43c8-988f-f0b9bf46b9bc',
-  // Only licence keys from this store + product unlock Pro.
-  storeId: Number(process.env.GIGAPOLIS_STORE_ID) || 513897,
-  productId: Number(process.env.GIGAPOLIS_PRODUCT_ID) || 1496849,
+  checkoutUrl: process.env.GIGAPOLIS_CHECKOUT_URL || 'https://getgigapolis.com/buy?ref=app',
+  // Licence server: activate / validate / deactivate.
+  licenceApi: process.env.GIGAPOLIS_LICENCE_API || 'https://getgigapolis.com/api/licence/',
+  // Only keys the server reports as Gigapolis Pro unlock Pro.
+  storeId: 'gigapolis',
+  productId: 'pro',
   priceLabel: '$19.99',
   // Angus's private owner key unlocks Pro without a purchase. Only its salted
   // scrypt hash is stored here; the key itself is never committed.
@@ -20,8 +22,7 @@ module.exports = {
   // Re-check a Pro licence online this often, and keep Pro working offline
   // for this long after the last successful check. A refunded key locks Pro
   // at the next online check, or after the grace period if kept offline.
-  // Seats per key are set in Lemon Squeezy (product → licence keys →
-  // activation limit), not here.
+  // Seats per key (3) are set on the server (ACTIVATION_LIMIT), not here.
   revalidateMs: 1 * 86400000,
   offlineGraceMs: 14 * 86400000,
   weeklyMs: 7 * 86400000,

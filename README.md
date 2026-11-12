@@ -63,6 +63,6 @@ Builds come from the **Build Mac app** GitHub Action (run it by hand or push a `
 | Performance tab: live memory / processor monitor, quit heavy apps | ✓ | ✓ |
 | Maintenance tab: DNS, Spotlight / icon cache, disk check, system scripts | ✓ | ✓ |
 
-Pro is unlocked with a **Lemon Squeezy licence key** (no account or login). Checkout link, store id (513897) and product id (1496849) live in `src/main/config.js`; env vars `GIGAPOLIS_CHECKOUT_URL` / `GIGAPOLIS_STORE_ID` / `GIGAPOLIS_PRODUCT_ID` override them. The key is checked online on activation and every few days after; Pro keeps working offline for 30 days. The free allowance is enforced in the main process. For development, `GIGAPOLIS_PRO=1 npm start` forces Pro (unpackaged builds only). In the browser demo the key `DEMO-PRO` unlocks Pro.
+Pro is unlocked with a **Gigapolis licence key** (no account or login), sold through Stripe at `getgigapolis.com/buy` and checked by the site's own licence server (`functions/api/licence/`, see `site/README.md`). The checkout and licence URLs live in `src/main/config.js`; env vars `GIGAPOLIS_CHECKOUT_URL` / `GIGAPOLIS_LICENCE_API` override them. The key is checked online on activation and every few days after; Pro keeps working offline for 30 days. The free allowance is enforced in the main process. For development, `GIGAPOLIS_PRO=1 npm start` forces Pro (unpackaged builds only). In the browser demo the key `DEMO-PRO` unlocks Pro.
 
 ![Upgrade screen](docs/pro-upgrade.png)

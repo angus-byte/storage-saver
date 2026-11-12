@@ -1,9 +1,9 @@
 // Cloudflare Pages Function: GET /api/stats  (used by /stats.html)
-// One place for: website visits + download clicks (D1), GitHub release downloads, Lemon Squeezy sales/refunds.
+// One place for: website visits + download clicks (D1), GitHub release downloads, Pro sales/refunds (Stripe orders in the licence table).
 // Protected by the STATS_KEY secret (sent as "Authorization: Bearer <key>"). Read-only: it never changes anything.
 
 import { ensureTable } from './track.js';
-import { STORE_ID } from './refund.js';
+import { dbOf, ensureTables } from '../_lib/licences.js';
 
 const DAYS = 30;
 
@@ -55,44 +55,37 @@ async function githubStats(fetchImpl) {
   return { byPlatform, total: byPlatform['mac-arm'] + byPlatform['mac-intel'] + byPlatform.win, releases: list.slice(0, 10) };
 }
 
-async function salesStats(key, fetchImpl, now) {
-  if (!key) return { enabled: false };
-  const orders = [];
-  let url = `https://api.lemonsqueezy.com/v1/orders?filter[store_id]=${STORE_ID}&page[size]=100`;
-  for (let i = 0; url && i < 10; i++) {
-    const res = await fetchImpl(url, { headers: { Accept: 'application/vnd.api+json', Authorization: `Bearer ${key}` } });
-    if (!res.ok) return { enabled: true, error: `Lemon Squeezy ${res.status}` };
-    const j = await res.json();
-    for (const o of j.data || []) orders.push(o.attributes || {});
-    url = (j.links && j.links.next) || null;
-  }
+async function salesStats(db, now) {
+  if (!db) return { enabled: false };
+  await ensureTables(db);
+  const { results } = await db.prepare('SELECT amount, created_at, refunded_at, live FROM licences').all();
+  const orders = results || [];
   const since = now - DAYS * 864e5;
   const sum = (list) => {
     const out = { orders: 0, refunds: 0, gross: 0, refunded: 0 };
     for (const o of list) {
-      if (o.status === 'paid' || o.status === 'refunded' || o.status === 'partial_refund') {
-        out.orders++;
-        out.gross += o.total_usd || 0;
-      }
-      if (o.status === 'refunded' || o.status === 'partial_refund' || o.refunded) {
+      out.orders++;
+      out.gross += o.amount || 0;
+      if (o.refunded_at) {
         out.refunds++;
-        out.refunded += o.refunded_amount_usd || (o.status === 'refunded' ? o.total_usd || 0 : 0);
+        out.refunded += o.amount || 0;
       }
     }
-    out.net = out.gross - out.refunded; // cents, before Lemon Squeezy fees
+    out.net = out.gross - out.refunded; // cents, before Stripe fees and tax
     return out;
   };
   const days = {};
   for (const o of orders) {
-    if (o.status !== 'paid' && o.status !== 'refunded' && o.status !== 'partial_refund') continue;
-    const d = String(o.created_at || '').slice(0, 10);
-    if (Date.parse(o.created_at) >= since) days[d] = (days[d] || 0) + 1;
+    if (o.created_at >= since) {
+      const d = new Date(o.created_at).toISOString().slice(0, 10);
+      days[d] = (days[d] || 0) + 1;
+    }
   }
   return {
     enabled: true,
-    testMode: orders.length > 0 && orders.every((o) => o.test_mode),
+    testMode: orders.length > 0 && orders.every((o) => !o.live),
     allTime: sum(orders),
-    last30: sum(orders.filter((o) => Date.parse(o.created_at) >= since)),
+    last30: sum(orders.filter((o) => o.created_at >= since)),
     perDay: days,
   };
 }
@@ -105,7 +98,7 @@ export async function handleStats(request, env, fetchImpl = fetch, now = Date.no
   const [site, downloads, sales] = await Promise.all([
     safe(siteStats(env.STATS_DB, now)),
     safe(githubStats(fetchImpl)),
-    safe(salesStats(env.LEMONSQUEEZY_API_KEY, fetchImpl, now)),
+    safe(salesStats(dbOf(env), now)),
   ]);
   return { status: 200, body: { generated: new Date(now).toISOString(), days: DAYS, site, downloads, sales } };
 }
