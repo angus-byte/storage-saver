@@ -108,9 +108,25 @@ function macTasks({ uid = process.getuid ? process.getuid() : 501, exists = fs.e
       desc: 'Removes the local snapshots Time Machine keeps on this Mac. Often frees many GB of “System Data”. Backups on your backup drive are not touched.',
       admin: true,
       available: exists('/usr/bin/tmutil'),
-      sh: '/usr/bin/tmutil thinlocalsnapshots / 999999999999 4',
+      // `thinlocalsnapshots` only thins down to what macOS thinks it needs, so
+      // it often leaves every snapshot in place. Delete them all instead:
+      // `deletelocalsnapshots /` (macOS 12+), then one date at a time (older
+      // macOS), then check none are left. Exit 5: blocked by privacy settings
+      // (Full Disk Access); exit 3: some are still there.
+      sh: [
+        'o=$(/usr/bin/tmutil deletelocalsnapshots / 2>&1)',
+        'case "$o" in *"not permitted"*|*"Full Disk"*) exit 5;; esac',
+        "for d in $(/usr/bin/tmutil listlocalsnapshotdates / 2>/dev/null | /usr/bin/grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}$'); do /usr/bin/tmutil deletelocalsnapshots \"$d\" >/dev/null 2>&1; done",
+        'l=$(/usr/bin/tmutil listlocalsnapshots / 2>&1)',
+        'case "$l" in *"not permitted"*) exit 5;; *com.apple.TimeMachine*) exit 3;; esac',
+        'exit 0',
+      ].join('; '),
       timeout: 10 * MIN,
-      ok: 'Local Time Machine snapshots cleared. The space shows as free within a minute or two.',
+      ok: 'Local Time Machine snapshots deleted. The space shows as free within a minute or two.',
+      codes: {
+        3: { message: 'Some snapshots are still there. Time Machine may be backing up right now: try again when it finishes.' },
+        5: { message: 'macOS blocked it. Turn on Full Disk Access for Gigapolis in System Settings › Privacy & Security, then try again.', perm: true },
+      },
     },
     {
       id: 'syscaches',
@@ -307,6 +323,8 @@ function winAdminScript(tasks, outFile) {
 function resultFor(t, code) {
   if (code === 0) return { id: t.id, ok: true, message: t.ok };
   if (code === 124) return { id: t.id, ok: false, message: 'Took too long and was stopped.' };
+  const c = t.codes && t.codes[code];
+  if (c) return { id: t.id, ok: false, message: c.message, perm: !!c.perm };
   if (code === 2 && t.fail) return { id: t.id, ok: false, problems: true, message: t.fail };
   return { id: t.id, ok: false, message: `Couldn’t finish${code != null ? ` (code ${code})` : ''}.` };
 }

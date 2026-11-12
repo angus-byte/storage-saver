@@ -3375,7 +3375,10 @@ async function renderSysMac(wrap, total) {
     actions.className = 'row-actions';
     const show = () => {
       const btns = [];
-      if (info.job && hasJob(info.job) && part.size > 0) btns.push(`<button data-act="job" class="demolish">${esc(info.btn(part))}</button>`);
+      // Purgeable space with no snapshots: macOS frees it itself, nothing to run.
+      const idle = part.id === 'purgeable' && !part.snapshots;
+      if (idle) btns.push('<span class="muted">No Time Machine snapshots left. macOS frees the rest on its own when space runs low.</span>');
+      if (info.job && !idle && hasJob(info.job) && part.size > 0) btns.push(`<button data-act="job" class="demolish">${esc(info.btn(part))}</button>`);
       if (part.id === 'apps') btns.push('<button data-act="apps">📦 App Uninstaller</button>');
       if (part.id === 'users') btns.push('<button data-act="users">👥 Open Users &amp; Groups</button>');
       if (part.path) btns.push('<button data-act="reveal">📍 Show in Finder</button>');
@@ -3460,6 +3463,7 @@ async function runSysJob(part, info) {
   if (r.error) toast(r.error);
   else if (res && res.cancelled) toast('Cancelled. Nothing was cleared.');
   else if (res) toast((res.ok ? '' : '✕ ') + res.message);
+  if (res && res.perm && api.openPermissions) setTimeout(() => api.openPermissions(), 1500);
   let freed = 0;
   if (res && res.ok && DEMO) {
     freed = Math.round(part.size * info.freed);

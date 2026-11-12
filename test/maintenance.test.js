@@ -142,3 +142,12 @@ test('maintenance run: admin batched once, history saved, busy guard', async () 
   assert.equal((await svc.run([])).error, 'Nothing selected.');
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('snapshot clean-up deletes every snapshot and explains why when it can’t', () => {
+  const t = mac.find((x) => x.id === 'snapshots');
+  assert.match(t.sh, /tmutil deletelocalsnapshots \//);
+  assert.doesNotMatch(t.sh, /thinlocalsnapshots/);
+  assert.deepEqual(m.resultFor(t, 5), { id: 'snapshots', ok: false, message: t.codes[5].message, perm: true });
+  assert.equal(m.resultFor(t, 3).ok, false);
+  assert.equal(m.resultFor(t, 0).ok, true);
+});
