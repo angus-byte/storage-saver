@@ -2,50 +2,60 @@ const test = require('node:test');
 const assert = require('node:assert');
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { d1 } = require('./d1');
 
-const load = () => import(pathToFileURL(path.join(__dirname, '../functions/api/refund.js')).href);
+const fn = (f) => import(pathToFileURL(path.join(__dirname, '../functions', f)).href);
 const NOW = Date.parse('2026-11-20T00:00:00Z');
-const env = { LEMONSQUEEZY_API_KEY: 'k' };
+const KEY = 'GP-AAAAA-BBBBB-CCCCC-DDDDD';
 
-function fakeLS({ email = 'a@b.com', product = 1496849, store = 513897, created = '2026-11-10T00:00:00Z', status = 'paid', refundOk = true } = {}) {
+async function setup({ created = '2026-11-10T00:00:00Z', refundOk = true, already = false } = {}) {
+  const { issueFromSession } = await fn('_lib/licences.js');
+  const db = d1();
+  const env = { STRIPE_SECRET_KEY: 'sk_test', LICENCE_DB: db };
+  await issueFromSession(db, env, { id: 'cs_test_1', payment_status: 'paid', payment_intent: 'pi_1', amount_total: 1999, currency: 'usd', created: Date.parse(created) / 1000, livemode: false, customer_details: { email: 'A@b.com' }, metadata: { licence_key: KEY } });
   const calls = [];
-  const json = (body, ok = true) => ({ ok, json: async () => body });
   const f = async (url, opts = {}) => {
     calls.push({ url, method: opts.method || 'GET', body: opts.body });
-    if (url.endsWith('/licenses/validate')) return json({ valid: true, license_key: { id: 7 }, meta: { store_id: store, product_id: product, order_id: 42, customer_email: email } });
-    if (url.endsWith('/orders/42')) return json({ data: { attributes: { status, refunded: status === 'refunded', created_at: created, total: 1999 } } });
-    if (url.endsWith('/orders/42/refund')) return json({}, refundOk);
-    if (url.endsWith('/license-keys/7')) return json({});
+    if (url.endsWith('/v1/refunds')) {
+      if (already) return { ok: false, json: async () => ({ error: { code: 'charge_already_refunded' } }) };
+      return { ok: refundOk, json: async () => ({}) };
+    }
     throw new Error('unexpected ' + url);
   };
-  return { f, calls };
+  return { db, env, f, calls };
 }
 
 test('refunds a recent matching order and disables the key', async () => {
-  const { handleRefund } = await load();
-  const { f, calls } = fakeLS();
-  const r = await handleRefund({ email: ' A@B.com ', key: 'KEY' }, env, f, NOW);
+  const { handleRefund } = await fn('api/refund.js');
+  const { db, env, f, calls } = await setup();
+  const r = await handleRefund({ email: ' a@B.com ', key: 'gp aaaaa bbbbb ccccc ddddd' }, env, f, NOW);
   assert.deepStrictEqual(r, { status: 200, body: { ok: true } });
-  const refund = calls.find((c) => c.url.endsWith('/refund'));
-  assert.strictEqual(JSON.parse(refund.body).data.attributes.amount, 1999);
-  assert.ok(calls.some((c) => c.method === 'PATCH'));
+  assert.match(calls[0].body, /payment_intent=pi_1/);
+  const row = await db.prepare('SELECT * FROM licences WHERE key = ?').bind(KEY).first();
+  assert.equal(row.status, 'disabled');
+  assert.equal(row.refunded_at, NOW);
+  // A second request is a no-op success.
+  assert.deepStrictEqual((await handleRefund({ email: 'a@b.com', key: KEY }, env, f, NOW)).body, { ok: true, already: true });
+  assert.equal(calls.length, 1);
 });
 
-test('rejects wrong email, wrong product, old orders, missing input', async () => {
-  const { handleRefund } = await load();
-  assert.strictEqual((await handleRefund({ email: 'x@y.com', key: 'K' }, env, fakeLS().f, NOW)).status, 404);
-  assert.strictEqual((await handleRefund({ email: 'a@b.com', key: 'K' }, env, fakeLS({ product: 1 }).f, NOW)).status, 404);
-  const old = fakeLS({ created: '2026-10-01T00:00:00Z' });
-  assert.strictEqual((await handleRefund({ email: 'a@b.com', key: 'K' }, env, old.f, NOW)).status, 403);
-  assert.ok(!old.calls.some((c) => c.url.endsWith('/refund')));
-  assert.strictEqual((await handleRefund({ email: '', key: '' }, env, fakeLS().f, NOW)).status, 400);
-  assert.strictEqual((await handleRefund({ email: 'a@b.com', key: 'K' }, {}, fakeLS().f, NOW)).status, 500);
+test('rejects wrong email, unknown key, old orders, missing input', async () => {
+  const { handleRefund } = await fn('api/refund.js');
+  const s = await setup();
+  assert.strictEqual((await handleRefund({ email: 'x@y.com', key: KEY }, s.env, s.f, NOW)).status, 404);
+  assert.strictEqual((await handleRefund({ email: 'a@b.com', key: 'GP-ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ' }, s.env, s.f, NOW)).status, 404);
+  assert.strictEqual((await handleRefund({ email: '', key: '' }, s.env, s.f, NOW)).status, 400);
+  assert.strictEqual((await handleRefund({ email: 'a@b.com', key: KEY }, {}, s.f, NOW)).status, 500);
+  const old = await setup({ created: '2026-10-01T00:00:00Z' });
+  assert.strictEqual((await handleRefund({ email: 'a@b.com', key: KEY }, old.env, old.f, NOW)).status, 403);
+  assert.equal(old.calls.length, 0);
 });
 
-test('already refunded is a no-op success; failed refund reports an error', async () => {
-  const { handleRefund } = await load();
-  const done = fakeLS({ status: 'refunded' });
-  assert.deepStrictEqual((await handleRefund({ email: 'a@b.com', key: 'K' }, env, done.f, NOW)).body, { ok: true, already: true });
-  assert.ok(!done.calls.some((c) => c.url.endsWith('/refund')));
-  assert.strictEqual((await handleRefund({ email: 'a@b.com', key: 'K' }, env, fakeLS({ refundOk: false }).f, NOW)).status, 502);
+test('failed refund reports an error and keeps the key; refunded-in-Stripe counts as done', async () => {
+  const { handleRefund } = await fn('api/refund.js');
+  const bad = await setup({ refundOk: false });
+  assert.strictEqual((await handleRefund({ email: 'a@b.com', key: KEY }, bad.env, bad.f, NOW)).status, 502);
+  assert.equal((await bad.db.prepare('SELECT status FROM licences').first()).status, 'active');
+  const done = await setup({ already: true });
+  assert.deepStrictEqual((await handleRefund({ email: 'a@b.com', key: KEY }, done.env, done.f, NOW)).body, { ok: true, already: true });
 });

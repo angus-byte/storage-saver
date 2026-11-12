@@ -114,7 +114,7 @@ function render(d) {
   var l30 = sa.last30 || {}, all = sa.allTime || {};
 
   var h = '';
-  if (sa.testMode) h += '<div class="banner">Sales are from Lemon Squeezy <b>test mode</b> (test API key). Swap in a live key after store approval.</div>';
+  if (sa.testMode) h += '<div class="banner">Sales so far are Stripe <b>test mode</b> orders. Swap in a live STRIPE_SECRET_KEY to sell for real.</div>';
   if (s.enabled === false) h += '<div class="banner">Visit counting is off: bind a D1 database as <b>STATS_DB</b> in Cloudflare Pages.</div>';
   if (s.error) h += '<div class="banner">Site stats error: ' + esc(s.error) + '</div>';
   h += '<div class="tiles">' +
@@ -142,8 +142,8 @@ function render(d) {
     (g.releases || []).map(function (r) { return [esc(r.tag) + ' <span class="muted">' + esc(r.date) + '</span>', num(r['mac-arm']), num(r['mac-intel']), num(r.win)]; })) + '</div>';
   h += '</div>';
   if (sa.error) h += '<p class="err">Sales: ' + esc(sa.error) + '</p>';
-  if (sa.enabled === false) h += '<p class="muted">Sales: add LEMONSQUEEZY_API_KEY in Cloudflare to see sales.</p>';
-  h += '<p class="muted">Visits are counted once per browser tab, with bots and automated browsers filtered out. Gross sales are before Lemon Squeezy fees and tax.</p>';
+  if (sa.enabled === false) h += '<p class="muted">Sales: bind the D1 database in Cloudflare to see sales.</p>';
+  h += '<p class="muted">Visits are counted once per browser tab, with bots and automated browsers filtered out. Gross sales are before Stripe fees and tax.</p>';
   $('out').innerHTML = h;
 }
 

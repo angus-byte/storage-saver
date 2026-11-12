@@ -311,8 +311,8 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
         ${more ? `<p style="margin-top:12px">Deep Clean found <b class="found">${fmt(more)}</b> more on this ${DEMO ? 'demo city' : 'computer'}.</p>` : ''}
         ${featureList()}
         <div class="row"><button class="primary" id="pro-buy">Buy Pro · ${esc(st ? st.priceLabel : '$19.99')}</button></div>
-        <p class="hint" style="margin-top:14px">Already bought it? Paste the licence key from your receipt email.</p>
-        <div class="row"><input type="text" id="pro-key" placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" spellcheck="false" autocomplete="off"><button class="ghost" id="pro-activate" style="width:auto;padding:0 14px">Activate</button></div>
+        <p class="hint" style="margin-top:14px">Already bought it? Paste the licence key from your thank-you page or invoice email.</p>
+        <div class="row"><input type="text" id="pro-key" placeholder="GP-XXXXX-XXXXX-XXXXX-XXXXX" spellcheck="false" autocomplete="off"><button class="ghost" id="pro-activate" style="width:auto;padding:0 14px">Activate</button></div>
         <div class="err" id="pro-err"></div>
         <p class="hint">Everything still goes to the Trash, so you can always get it back.${DEMO ? ' Demo: use the key DEMO-PRO.' : ''}</p>`;
       card.querySelector('#pro-buy').onclick = () => {

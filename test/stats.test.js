@@ -1,4 +1,5 @@
 const test = require('node:test');
+const { d1 } = require('./d1');
 const assert = require('node:assert');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -86,13 +87,16 @@ test('stats needs the key and sums everything read-only', async () => {
     if (url.includes('api.github.com')) return json([{ tag_name: 'v0.10.9', published_at: '2026-11-04T00:00:00Z', assets: [
       { name: 'Gigapolis-0.10.9-arm64.dmg', download_count: 10 }, { name: 'Gigapolis-0.10.9-x64.dmg', download_count: 3 },
       { name: 'Gigapolis-Setup-0.10.9.exe', download_count: 4 }, { name: 'latest-mac.yml', download_count: 999 }] }]);
-    if (url.includes('lemonsqueezy.com/v1/orders')) return json({ data: [
-      { attributes: { status: 'paid', total_usd: 1999, created_at: '2026-11-15T00:00:00Z', test_mode: true } },
-      { attributes: { status: 'refunded', refunded: true, total_usd: 1999, refunded_amount_usd: 1999, created_at: '2026-11-16T00:00:00Z', test_mode: true } },
-      { attributes: { status: 'paid', total_usd: 1999, created_at: '2026-09-01T00:00:00Z', test_mode: true } }], links: {} });
     throw new Error('unexpected ' + url);
   };
-  const env = { STATS_KEY: 'secret-key', STATS_DB: db, LEMONSQUEEZY_API_KEY: 'k' };
+  const { ensureTables } = await import(pathToFileURL(path.join(__dirname, '../functions/_lib/licences.js')).href);
+  const lic = d1();
+  await ensureTables(lic);
+  const add = (key, created, refunded) => lic.sql.prepare("INSERT INTO licences (key, amount, created_at, refunded_at, live, status) VALUES (?, 1999, ?, ?, 0, 'active')").run(key, Date.parse(created), refunded || null);
+  add('a', '2026-11-15T00:00:00Z');
+  add('b', '2026-11-16T00:00:00Z', NOW);
+  add('c', '2026-09-01T00:00:00Z');
+  const env = { STATS_KEY: 'secret-key', STATS_DB: db, LICENCE_DB: lic };
   const r = (k) => new Request('https://getgigapolis.com/api/stats', { headers: { Authorization: 'Bearer ' + k } });
   assert.equal((await handleStats(r('nope'), env, f, NOW)).status, 401);
   assert.equal(calls.length, 0);

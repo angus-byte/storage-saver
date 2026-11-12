@@ -1,4 +1,5 @@
-// Free / Pro plan: Lemon Squeezy licence keys + the free Demolish allowance.
+// Free / Pro plan: Gigapolis licence keys (sold through Stripe, checked by
+// getgigapolis.com/api/licence) + the free Demolish allowance.
 // Pure Node (no Electron import) so it can be unit tested; main.js passes in
 // the folder to keep state in and, optionally, a fetch implementation.
 const fs = require('fs');
@@ -7,7 +8,6 @@ const os = require('os');
 const crypto = require('crypto');
 const config = require('./config');
 
-const API = 'https://api.lemonsqueezy.com/v1/licenses/';
 
 function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now(), forcePro = false, cfg = config, machineId = () => 'unknown' }) {
   const file = path.join(dir, 'gigapolis-plan.json');
@@ -45,7 +45,7 @@ function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now
 
   // A licence activated on another computer (plan file copied across, or a
   // restored backup / migrated Mac) doesn't count here. It needs its own
-  // activation, which uses one of the key's seats on Lemon Squeezy.
+  // activation, which uses one of the key's seats on the licence server.
   const here = machineId();
   // Licences saved by versions before 0.10.6 have no computer id: adopt this one.
   if (data.licence && !data.licence.owner && !data.licence.machine) {
@@ -125,7 +125,7 @@ function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now
   }
 
   async function call(endpoint, params) {
-    const res = await fetchImpl(API + endpoint, {
+    const res = await fetchImpl((cfg.licenceApi || config.licenceApi) + endpoint, {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams(params).toString(),
@@ -137,8 +137,8 @@ function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now
     return { httpOk: res.ok, body };
   }
 
-  // Lemon Squeezy key status: active / inactive are fine; disabled (refund,
-  // or switched off by hand in the dashboard) and expired are not.
+  // Key status: active / inactive are fine; disabled (refund or chargeback)
+  // and expired are not.
   function keyUsable(k) {
     return !k || !k.status || k.status === 'active' || k.status === 'inactive';
   }
@@ -203,7 +203,7 @@ function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now
       const r = await call('validate', { license_key: l.key, instance_id: l.instanceId });
       if (typeof r.body.valid === 'boolean') {
         // valid:false covers a refunded/disabled key and an activation that
-        // was removed (from another computer or the Lemon Squeezy dashboard).
+        // was removed ("Deactivate this computer" on another machine).
         const good = r.body.valid && rightProduct(r.body.meta) && keyUsable(r.body.license_key);
         l.status = good ? 'active' : 'invalid';
         if (good) {
