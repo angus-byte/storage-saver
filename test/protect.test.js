@@ -6,7 +6,7 @@ const home = '/Users/angus';
 const p = createProtection(home, 'darwin');
 
 test('top-level user and system folders are protected', () => {
-  for (const f of ['/Users/angus', '/Users/angus/Pictures', '/Users/angus/pictures/', '/Users/angus/Library', '/Applications', '/', '/Users', '/System', '/Users/angus/Library/Caches'])
+  for (const f of ['/Users/angus', '/Users/angus/Pictures', '/Users/angus/pictures/', '/Users/angus/Library', '/Applications', '/', '/Users', '/System', '/Users/angus/Library/Caches', '/Users/Shared'])
     assert.ok(p.isProtected(f), f);
 });
 test('Pictures contents can be cleared, home and Library cannot', () => {
@@ -15,7 +15,7 @@ test('Pictures contents can be cleared, home and Library cannot', () => {
   assert.equal(p.check('/Users/angus').contents, false);
 });
 test('things inside protected folders are fine', () => {
-  for (const f of ['/Users/angus/Pictures/Photos Library.photoslibrary', '/Users/angus/Downloads/big.dmg', '/Applications/Old.app', '/Users/angus/Library/Caches/com.foo'])
+  for (const f of ['/Users/angus/Pictures/Photos Library.photoslibrary', '/Users/angus/Downloads/big.dmg', '/Applications/Old.app', '/Users/angus/Library/Caches/com.foo', '/Users/Shared/Old Projects'])
     assert.ok(!p.isProtected(f), f);
 });
 test('permission errors get a Full Disk Access hint', () => {

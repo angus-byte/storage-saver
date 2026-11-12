@@ -8,7 +8,7 @@ const HOME_FOLDERS = ['Desktop', 'Documents', 'Downloads', 'Movies', 'Music', 'P
 // Inside these, the items themselves are fine to remove but the folder isn't.
 const HOME_EMPTYABLE = new Set(['Desktop', 'Documents', 'Downloads', 'Movies', 'Music', 'Pictures', 'Videos', 'Library/Caches', 'Library/Logs', '.Trash', 'AppData/Local/Temp']);
 const LIBRARY_KEEP = ['Library', 'Library/Application Support', 'Library/Caches', 'Library/Containers', 'Library/Group Containers', 'Library/Preferences', 'Library/Logs', 'Library/Mobile Documents', 'Library/Mail', 'Library/Messages', 'Library/Photos', 'Library/Keychains', 'Library/CloudStorage', '.Trash', 'AppData', 'AppData/Local', 'AppData/LocalLow', 'AppData/Roaming', 'AppData/Local/Temp', 'AppData/Local/Microsoft', 'AppData/Local/Packages', 'AppData/Roaming/Microsoft', 'NTUSER.DAT'];
-const MAC_SYSTEM = ['/', '/Applications', '/System', '/Library', '/Users', '/usr', '/bin', '/sbin', '/etc', '/var', '/private', '/opt', '/cores', '/Volumes', '/dev', '/tmp', '/home', '/Library/Caches', '/Library/Application Support', '/System/Volumes/Data'];
+const MAC_SYSTEM = ['/', '/Applications', '/System', '/Library', '/Users', '/usr', '/bin', '/sbin', '/etc', '/var', '/private', '/opt', '/cores', '/Volumes', '/dev', '/tmp', '/home', '/Library/Caches', '/Library/Application Support', '/System/Volumes/Data', '/Users/Shared'];
 function windowsSystem(env = process.env) {
   const drive = (env.SystemDrive || 'C:') + '\\';
   const list = [drive, 'Windows', 'Program Files', 'Program Files (x86)', 'ProgramData', 'Users', 'Recovery', 'System Volume Information', '$Recycle.Bin', 'PerfLogs', 'Users\\Public'].map((d) => (d === drive ? d : drive + d));

@@ -18,8 +18,18 @@ test('task tables have unique ids and every job has a command', () => {
       assert.ok(t.ok && t.name && t.desc);
     }
   }
-  assert.deepEqual(mac.map((t) => t.id), ['dns', 'launch', 'scripts', 'ram', 'firstaid', 'perms', 'snapshots', 'spotlight']);
+  assert.deepEqual(mac.map((t) => t.id), ['dns', 'launch', 'scripts', 'ram', 'firstaid', 'perms', 'snapshots', 'syscaches', 'syslogs', 'brew', 'spotlight']);
   assert.deepEqual(win.map((t) => t.id), ['dns', 'icons', 'cleanup', 'diskcheck', 'optimise', 'sfc']);
+});
+
+test('Homebrew clean-up only when brew is installed, and only fixed paths are deleted', () => {
+  assert.ok(!m.macTasks({ exists: (p) => !/brew/.test(p) }).some((t) => t.id === 'brew'));
+  const brew = m.macTasks({ exists: (p) => p === '/opt/homebrew/bin/brew' }).find((t) => t.id === 'brew');
+  assert.equal(brew.cmd, '/opt/homebrew/bin/brew');
+  assert.ok(!brew.admin);
+  const caches = mac.find((t) => t.id === 'syscaches');
+  assert.ok(caches.admin && caches.sh.startsWith('/usr/bin/find /Library/Caches -mindepth 1 '));
+  assert.match(mac.find((t) => t.id === 'syslogs').sh, /-mtime \+7 -delete/);
 });
 
 test('maintenance scripts are hidden when periodic is missing', () => {
