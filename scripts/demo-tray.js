@@ -15,8 +15,6 @@
 #demo-tray-menu div.dis { color: #8a8a90; }
 #demo-tray-menu div .ck { width: 12px; }
 #demo-tray-menu hr { border: none; border-top: 1px solid rgba(0, 0, 0, 0.12); margin: 4px 8px; }
-body.night #demo-tray-menu { background: rgba(40, 42, 50, 0.92); color: #eee; }
-body.night #demo-tray-menu hr { border-top-color: rgba(255, 255, 255, 0.14); }
 #panel { top: 34px; max-height: calc(100% - 52px); }
 #hud { top: 36px; }
 `;

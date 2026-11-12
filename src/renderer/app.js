@@ -695,7 +695,6 @@ function applyNight() {
   const glow = Math.max(0, 1 - Math.abs(k - 0.35) / 0.35);
   const warm = glow * glow * (3 - 2 * glow);
   document.documentElement.style.setProperty('--dusk', warm.toFixed(3));
-  document.body.classList.toggle('night', k > 0.5);
   $('btn-night').textContent = nightLabel();
   scene.fog.color.copy(lerpHex(_c1, 0x4fbdbb, 0x0c1430, k));
   hemi.color.copy(lerpHex(_c1, 0xdff3ef, 0x3a4a7a, k));
