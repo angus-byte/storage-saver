@@ -1,0 +1,79 @@
+name: Build Mac App Store app
+
+# Builds the sandboxed Mac App Store ("Lite") version of Gigapolis as a signed
+# universal .pkg and, when asked, uploads it to App Store Connect. Run it by
+# hand from the Actions tab. The direct-download .dmg comes from release-mac.yml.
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   MAS_CSC_LINK            base64 of a .p12 holding BOTH certificates:
+#                           "Apple Distribution" (or "3rd Party Mac Developer Application")
+#                           and "Mac Installer Distribution" (or "3rd Party Mac Developer Installer")
+#   MAS_CSC_KEY_PASSWORD    password of that .p12
+#   MAS_PROVISIONING_PROFILE base64 of the Mac App Store provisioning profile for
+#                           com.sommarfilms.storagesaver (developer.apple.com → Profiles)
+#   ASC_API_KEY_ID          App Store Connect API key id        (for the upload step)
+#   ASC_API_ISSUER_ID       App Store Connect API issuer id
+#   ASC_API_KEY             base64 of the AuthKey_<id>.p8 file
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: Upload the .pkg to App Store Connect (TestFlight / review)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  mas:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+      - name: Install provisioning profile
+        env:
+          PROFILE: ${{ secrets.MAS_PROVISIONING_PROFILE }}
+        run: |
+          test -n "$PROFILE" || { echo "MAS_PROVISIONING_PROFILE secret is missing"; exit 1; }
+          echo "$PROFILE" | base64 --decode > build/embedded.provisionprofile
+          security cms -D -i build/embedded.provisionprofile | plutil -extract Name raw -o - -
+
+      - name: Build signed Mac App Store package
+        env:
+          CSC_LINK: ${{ secrets.MAS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAS_CSC_KEY_PASSWORD }}
+        run: npx electron-builder --mac mas --universal --publish never
+
+      - name: Check the bundle
+        run: |
+          APP=$(ls -d dist/mas-universal/*.app | head -1)
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -d --entitlements :- "$APP" | head -40
+          ls -la "$APP/Contents/Resources/PrivacyInfo.xcprivacy" "$APP/Contents/embedded.provisionprofile"
+          ls -la dist/*.pkg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gigapolis-mas
+          path: dist/*.pkg
+
+      - name: Upload to App Store Connect
+        if: inputs.upload
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
+        run: |
+          mkdir -p ~/private_keys
+          echo "$ASC_API_KEY" | base64 --decode > ~/private_keys/AuthKey_$ASC_API_KEY_ID.p8
+          PKG=$(ls dist/*.pkg | head -1)
+          xcrun altool --validate-app -f "$PKG" -t macos --apiKey "$ASC_API_KEY_ID" --apiIssuer "$ASC_API_ISSUER_ID"
+          xcrun altool --upload-app -f "$PKG" -t macos --apiKey "$ASC_API_KEY_ID" --apiIssuer "$ASC_API_ISSUER_ID"

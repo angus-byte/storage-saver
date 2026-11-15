@@ -2,6 +2,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('storage', {
   platform: process.platform,
+  // Mac App Store (sandboxed) build: Pro is an In-App Purchase, some jobs are off.
+  mas: process.mas === true,
+  caps: () => ipcRenderer.invoke('app:caps'),
   diskInfo: () => ipcRenderer.invoke('disk:info'),
   scan: (root) => ipcRenderer.invoke('scan:start', root),
   cancelScan: () => ipcRenderer.invoke('scan:cancel'),
@@ -26,6 +29,7 @@ contextBridge.exposeInMainWorld('storage', {
   activateLicence: (key) => ipcRenderer.invoke('plan:activate', key),
   deactivateLicence: () => ipcRenderer.invoke('plan:deactivate'),
   openCheckout: () => ipcRenderer.invoke('plan:checkout'),
+  restorePurchase: () => ipcRenderer.invoke('plan:restore'),
   setWeekly: (on) => ipcRenderer.invoke('plan:setWeekly', on),
   onPlan: (cb) => {
     const handler = (_e, st) => cb(st);

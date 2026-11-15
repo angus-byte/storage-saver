@@ -20,6 +20,11 @@ const { createDrives, driveMessage } = require('./drives');
 const { createMonitor } = require('./perf');
 const { createMaintenance } = require('./maintenance');
 const { createSysSpace } = require('./sysspace');
+const { capabilities, filterMaintenance } = require('./distribution');
+// Direct download vs Mac App Store (sandboxed "Lite") build: see distribution.js.
+const caps = capabilities({ mas: process.mas === true, platform: process.platform });
+let bookmarks = null; // App Store build: folders the user granted (security-scoped bookmarks)
+let store = null; // App Store build: In-App Purchase
 let drives = createDrives(); // reloaded with the saved opt-ins once userData is known
 const driveBlock = (p) => {
   const c = drives.blocked(p);
@@ -96,6 +101,13 @@ app.whenReady().then(() => {
   settings = createSettings({ dir: app.getPath('userData') });
   drives = createDrives({ file: path.join(app.getPath('userData'), 'drives.json') });
   plan = createLicence({ dir: app.getPath('userData'), machineId, forcePro: !app.isPackaged && process.env.GIGAPOLIS_PRO === '1' });
+  if (caps.mas) {
+    const mas = require('./mas');
+    bookmarks = mas.createBookmarks({ dir: app.getPath('userData') });
+    bookmarks.restore();
+    store = mas.createStore({ plan, onChange: () => { pushPlan(); applyLoginItem(); } });
+    store.price().then((p) => p && (storePrice = p) && pushPlan()).catch(() => {});
+  }
   plan.revalidate().then(pushPlan);
   setInterval(() => plan.revalidate().then(pushPlan), 6 * 3600000);
   startWeeklyCheckup();
@@ -115,7 +127,7 @@ app.whenReady().then(() => {
 let updater = null;
 let manualCheck = false;
 function startAutoUpdates() {
-  if (!app.isPackaged) return;
+  if (!app.isPackaged || !caps.autoUpdate) return; // the App Store updates its own build
   try { ({ autoUpdater: updater } = require('electron-updater')); } catch { return; }
   updater.on('error', (err) => {
     console.warn('Update check failed:', err && err.message);
@@ -155,7 +167,7 @@ function setAppMenu() {
       label: app.name,
       submenu: [
         { role: 'about' },
-        { label: 'Check for Updates…', click: checkForUpdatesNow },
+        ...(caps.autoUpdate ? [{ label: 'Check for Updates…', click: checkForUpdatesNow }] : []),
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
@@ -302,7 +314,7 @@ function startTray() {
       open: () => showWindow(),
       settings,
       onSetting,
-      checkUpdates: checkForUpdatesNow,
+      checkUpdates: caps.autoUpdate ? checkForUpdatesNow : null,
       quit: () => app.quit(),
     });
   } catch (err) {
@@ -333,12 +345,23 @@ ipcMain.handle('scan:start', async (event, root) => {
   if (currentScan) currentScan.abort();
   const controller = new AbortController();
   currentScan = controller;
-  const target = isAbs(root) ? root : defaultRoots()[0];
+  let target = isAbs(root) ? root : defaultRoots()[0];
   const sender = event.sender;
   const block = driveBlock(target);
   if (block) {
     if (currentScan === controller) currentScan = null;
     return { blocked: block };
+  }
+  // App Store build: the sandbox only reads folders the user has picked. Ask
+  // once per folder (the bookmark is kept), then scan whatever they chose.
+  if (bookmarks && !bookmarks.has(target)) {
+    const granted = await bookmarks.ensure(win, target);
+    if (currentScan !== controller) return { cancelled: true };
+    if (!granted) {
+      currentScan = null;
+      return { cancelled: true, needsAccess: true };
+    }
+    target = granted;
   }
   try {
     const tree = await scan(target, {
@@ -392,7 +415,10 @@ function hasFullDiskAccess() {
   }
 }
 
-ipcMain.handle('perm:status', () => ({ platform: process.platform, fullDisk: hasFullDiskAccess() }));
+// App Store build: no Full Disk Access switch (the sandbox asks per folder
+// instead), so the overlay is skipped and the folder prompt does the asking.
+ipcMain.handle('perm:status', () => ({ platform: process.platform, fullDisk: caps.fullDiskAccessPrompt ? hasFullDiskAccess() : true, mas: caps.mas }));
+ipcMain.handle('app:caps', () => ({ ...caps, version: app.getVersion() }));
 
 ipcMain.handle('fs:protected', () => protection.list());
 
@@ -417,6 +443,7 @@ ipcMain.handle('drives:add', (_e, root) => isAbs(root) && drives.add(root));
 ipcMain.handle('drives:remove', (_e, root) => isAbs(root) && drives.remove(root));
 
 ipcMain.handle('fs:pickFolder', async () => {
+  if (bookmarks) return bookmarks.request(win, { message: 'Choose a folder or drive to measure. Gigapolis keeps access to it so you only pick it once.' });
   const res = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
   return res.canceled ? null : res.filePaths[0];
 });
@@ -584,10 +611,13 @@ async function emptyFolder(dir) {
 
 // --- Plan (free / Pro) + Deep Clean -----------------------------------------
 function pushPlan() {
-  for (const w of BrowserWindow.getAllWindows()) if (!w.webContents.isDestroyed()) w.webContents.send('plan:changed', plan.status());
+  for (const w of BrowserWindow.getAllWindows()) if (!w.webContents.isDestroyed()) w.webContents.send('plan:changed', planStatus());
 }
-ipcMain.handle('plan:status', () => plan.status());
+let storePrice = null;
+const planStatus = () => ({ ...plan.status(), ...(caps.mas ? { channel: 'mas', priceLabel: storePrice || plan.status().priceLabel } : { channel: 'direct' }) });
+ipcMain.handle('plan:status', () => planStatus());
 ipcMain.handle('plan:activate', async (_e, key) => {
+  if (!caps.licenceKeys) return { ok: false, error: 'This version of Gigapolis is unlocked through the App Store. Use "Buy Pro" or "Restore purchase".' };
   const r = await plan.activate(key);
   if (r.ok) {
     pushPlan();
@@ -601,10 +631,15 @@ ipcMain.handle('plan:deactivate', async () => {
   applyLoginItem();
   return r;
 });
-ipcMain.handle('plan:checkout', () => {
+// Direct build: opens the Stripe checkout on getgigapolis.com. App Store
+// build: StoreKit In-App Purchase (App Store rule 3.1.1: no outside payment
+// links), resolved when the transaction settles.
+ipcMain.handle('plan:checkout', async () => {
+  if (store) return store.purchase();
   shell.openExternal(config.checkoutUrl);
   return true;
 });
+ipcMain.handle('plan:restore', async () => (store ? store.restore() : { ok: false, error: 'Restore purchases is only available in the App Store version.' }));
 ipcMain.handle('plan:setWeekly', (_e, enabled) => {
   const st = plan.setWeekly({ enabled: !!enabled });
   applyLoginItem();
@@ -672,7 +707,7 @@ const CITY = ['darwin', 'win32'].includes(process.platform);
 let appsCache = null;
 const listAppsNow = () => (WIN ? cityhallWin.listApps(os.homedir()) : cityhall.listApps(os.homedir()));
 ipcMain.handle('apps:list', async (_e, fresh) => {
-  if (!CITY) return { supported: false, apps: [] };
+  if (!CITY || !caps.uninstaller) return { supported: false, apps: [], reason: caps.uninstaller ? null : 'mas' };
   if (!appsCache || fresh) appsCache = listAppsNow();
   try {
     return { supported: true, apps: await appsCache };
@@ -686,6 +721,7 @@ ipcMain.handle('apps:list', async (_e, fresh) => {
 // again here rather than trusted from the page. Counts towards the free
 // Demolish allowance like any other demolish.
 ipcMain.handle('apps:uninstall', async (_e, appPath) => {
+  if (!caps.uninstaller) return { ok: false, error: 'The App Store version cannot move apps out. Drag the app from Applications to the Trash instead.' };
   const apps = await (appsCache || listAppsNow());
   const app = apps.find((a) => a.path === appPath);
   if (!app) return { ok: false, error: 'App not found. Reopen App Uninstaller to rescan.' };
@@ -913,19 +949,23 @@ const getMonitor = () =>
     thermal: () => (process.platform === 'darwin' && powerMonitor.getCurrentThermalState ? powerMonitor.getCurrentThermalState() : null),
   }));
 ipcMain.handle('perf:sample', () => getMonitor().sample());
-ipcMain.handle('perf:quit', (_e, key, force) => getMonitor().quit(String(key), !!force));
-app.on('will-quit', () => monitor && monitor.stop());
+ipcMain.handle('perf:quit', (_e, key, force) => (caps.quitApps ? getMonitor().quit(String(key), !!force) : { ok: false, error: 'The App Store version cannot quit other apps. Use the app’s own Quit menu.' }));
+app.on('will-quit', () => {
+  if (monitor) monitor.stop();
+  if (bookmarks) bookmarks.stopAll();
+});
 
 // --- Public Works: maintenance jobs (DNS, Spotlight, First Aid...) -----------
 // The page sends task ids only; the commands live in maintenance.js.
 let maintenance = null;
-const getMaintenance = () => (maintenance ||= createMaintenance({ dir: app.getPath('userData') }));
+const getMaintenance = () => (maintenance ||= createMaintenance({ dir: app.getPath('userData'), filter: (tasks) => filterMaintenance(tasks, caps) }));
 ipcMain.handle('maint:list', () => getMaintenance().list());
 ipcMain.handle('maint:run', (_e, ids) => getMaintenance().run(Array.isArray(ids) ? ids.slice(0, 20).map(String) : []));
 
 // --- "System & other users": what's in it (macOS) ------------------------------
 let sysSpace = null;
 ipcMain.handle('sys:space', async (_e, scanRoot) => {
+  if (!caps.systemSpace) return null; // sandbox: du on / and tmutil are blocked
   sysSpace ||= createSysSpace();
   let free = 0;
   try {

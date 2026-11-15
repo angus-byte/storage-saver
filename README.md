@@ -35,6 +35,10 @@ The build is signed with a Developer ID and notarised by Apple, so it opens like
 
 Builds come from the **Build Mac app** GitHub Action (run it by hand or push a `v*` tag). Locally on a Mac, `npm run dist` writes the `.dmg` to `dist/`.
 
+## Mac App Store (Lite)
+
+`npm run dist:mas` builds the sandboxed App Store version (Pro as an In-App Purchase, no auto-updater, no administrator jobs). See [docs/app-store.md](docs/app-store.md) for what differs and the App Store Connect checklist.
+
 ## Layout
 
 - `src/main/scanner.js` – folder walker, size aggregation, categories, cleanup suggestions (pure Node, tested).

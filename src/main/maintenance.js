@@ -426,8 +426,10 @@ function createHistory(dir) {
   };
 }
 
-function createMaintenance({ platform = process.platform, dir = null, exec } = {}) {
-  const tasks = tasksFor(platform);
+// `filter` (optional) trims the task table, e.g. the App Store build drops
+// every job that needs an administrator (see distribution.js).
+function createMaintenance({ platform = process.platform, dir = null, exec, filter = (t) => t } = {}) {
+  const tasks = filter(tasksFor(platform));
   const history = createHistory(dir);
   let busy = false;
   return {

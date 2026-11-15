@@ -154,7 +154,9 @@ export function initCityHall({ api, fmt, esc, toast, pro, DEMO }) {
       return;
     }
     if (!apps.supported) {
-      el.innerHTML = '<div class="empty">Moving Day is for macOS and Windows.</div>';
+      el.innerHTML = apps.reason === 'mas'
+        ? '<div class="empty">Moving Day isn’t in the App Store version: Apple’s sandbox doesn’t let apps move other apps out. Drag an app from Applications to the Trash instead, then Deep Clean finds its leftovers.</div>'
+        : '<div class="empty">Moving Day is for macOS and Windows.</div>';
       return;
     }
     const list = apps.apps.filter((a) => filter === 'all' || a.unused);

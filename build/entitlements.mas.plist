@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Mac App Store build: App Sandbox is mandatory. -->
+  <key>com.apple.security.app-sandbox</key>
+  <true/>
+  <!-- Folders the user picks (the home folder at first launch, other folders
+       and drives later) and the bookmarks that keep that access across
+       launches. Read-write so items can be moved to the Trash. -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+  <key>com.apple.security.files.bookmarks.app-scope</key>
+  <true/>
+  <key>com.apple.security.files.downloads.read-write</key>
+  <true/>
+  <!-- Photo Studio reads the Photos library size. -->
+  <key>com.apple.security.personal-information.photos-library</key>
+  <true/>
+  <!-- Electron/Chromium needs these inside the sandbox. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+  <!-- Team id + bundle id, must match the provisioning profile (Apple requires both for MAS). -->
+  <key>com.apple.application-identifier</key>
+  <string>Q5N8US95TK.com.sommarfilms.storagesaver</string>
+  <key>com.apple.developer.team-identifier</key>
+  <string>Q5N8US95TK</string>
+</dict>
+</plist>

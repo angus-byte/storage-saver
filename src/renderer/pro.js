@@ -244,6 +244,10 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
     rerender();
   }
 
+  // Mac App Store build: Pro is an In-App Purchase, so no checkout page and
+  // no licence keys; "Restore purchase" instead.
+  const MAS = () => !!(st && st.channel === 'mas');
+
   function featureList() {
     const d = state.deep || {};
     const found = (k) => (d[k] && d[k].total ? `<span class="found">${fmt(d[k].total)} found</span>` : '');
@@ -280,16 +284,17 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
     if (isPro()) {
       card.innerHTML = `<button class="close" aria-label="Close">×</button>
         <span class="pro-badge">PRO</span><h2>Gigapolis Pro is on</h2>
-        <p>Licence ${esc(st.keyHint || '')}${st.email ? ` · ${esc(st.email)}` : ''}${st.devPro ? ' · developer mode' : ''}</p>
+        <p>${st.storePurchase ? 'Bought on the App Store' : `Licence ${esc(st.keyHint || '')}`}${st.email ? ` · ${esc(st.email)}` : ''}${st.devPro ? ' · developer mode' : ''}</p>
         <label class="switch"><span><b>Weekly check-up</b><br><small class="muted">Rescans once a week in the background and alerts you when there is space to clear. Never deletes on its own.</small></span><input type="checkbox" id="pro-weekly" ${st.weekly.enabled ? 'checked' : ''}></label>
         ${st.activations ? `<p class="hint">Activated on <b>${st.activations.used} of ${st.activations.limit}</b> computers.</p>` : ''}
-        <div class="row"><button class="link" id="pro-deact">Deactivate this computer (frees a seat for another one)</button></div>
+        ${st.storePurchase ? '' : '<div class="row"><button class="link" id="pro-deact">Deactivate this computer (frees a seat for another one)</button></div>'}
         <div class="err" id="pro-err"></div>`;
       card.querySelector('#pro-weekly').onchange = async (e) => {
         st = await api.setWeekly(e.target.checked);
         renderChip();
       };
-      card.querySelector('#pro-deact').onclick = async () => {
+      const deact = card.querySelector('#pro-deact');
+      if (deact) deact.onclick = async () => {
         const r = await api.deactivateLicence();
         if (r.status) st = r.status;
         modal.hidden = true;
@@ -311,13 +316,49 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
         ${more ? `<p style="margin-top:12px">Deep Clean found <b class="found">${fmt(more)}</b> more on this ${DEMO ? 'demo city' : 'computer'}.</p>` : ''}
         ${featureList()}
         <div class="row"><button class="primary" id="pro-buy">Buy Pro · ${esc(st ? st.priceLabel : '$19.99')}</button></div>
-        <p class="hint" style="margin-top:14px">Already bought it? Paste the licence key from your thank-you page or invoice email.</p>
-        <div class="row"><input type="text" id="pro-key" placeholder="GP-XXXXX-XXXXX-XXXXX-XXXXX" spellcheck="false" autocomplete="off"><button class="ghost" id="pro-activate" style="width:auto;padding:0 14px">Activate</button></div>
+        ${MAS()
+          ? `<p class="hint" style="margin-top:14px">Paid through the App Store with your Apple Account. Bought it before? <button class="link" id="pro-restore" style="display:inline;padding:0">Restore purchase</button></p>`
+          : `<p class="hint" style="margin-top:14px">Already bought it? Paste the licence key from your thank-you page or invoice email.</p>
+        <div class="row"><input type="text" id="pro-key" placeholder="GP-XXXXX-XXXXX-XXXXX-XXXXX" spellcheck="false" autocomplete="off"><button class="ghost" id="pro-activate" style="width:auto;padding:0 14px">Activate</button></div>`}
         <div class="err" id="pro-err"></div>
         <p class="hint">Everything still goes to the Trash, so you can always get it back.${DEMO ? ' Demo: use the key DEMO-PRO.' : ''}</p>`;
-      card.querySelector('#pro-buy').onclick = () => {
-        api.openCheckout();
-        if (DEMO) toast('Demo: would open the checkout page');
+      const unlocked = (r) => {
+        st = r.status || st;
+        modal.hidden = true;
+        renderChip();
+        rerender();
+        toast('Welcome to Gigapolis Pro. Deep Clean and unlimited Demolish are unlocked.');
+      };
+      const buyBtn = card.querySelector('#pro-buy');
+      buyBtn.onclick = async () => {
+        if (!MAS()) {
+          api.openCheckout();
+          if (DEMO) toast('Demo: would open the checkout page');
+          return;
+        }
+        // App Store: the In-App Purchase sheet; resolves when it settles.
+        buyBtn.disabled = true;
+        buyBtn.textContent = 'Waiting for the App Store…';
+        let r;
+        try {
+          r = await api.openCheckout();
+        } catch (err) {
+          r = { ok: false, error: String(err && err.message ? err.message : err) };
+        }
+        buyBtn.disabled = false;
+        buyBtn.textContent = `Buy Pro · ${st ? st.priceLabel : '$19.99'}`;
+        if (r && r.ok) unlocked(r);
+        else if (r && r.error && !r.cancelled) card.querySelector('#pro-err').textContent = r.error;
+      };
+      const restoreBtn = card.querySelector('#pro-restore');
+      if (restoreBtn) restoreBtn.onclick = async () => {
+        restoreBtn.disabled = true;
+        restoreBtn.textContent = 'Checking…';
+        const r = await api.restorePurchase().catch((err) => ({ ok: false, error: String(err && err.message ? err.message : err) }));
+        restoreBtn.disabled = false;
+        restoreBtn.textContent = 'Restore purchase';
+        if (r && r.ok) unlocked(r);
+        else card.querySelector('#pro-err').textContent = (r && r.error) || 'Nothing to restore.';
       };
       const doActivate = async () => {
         const btn = card.querySelector('#pro-activate');
@@ -341,10 +382,13 @@ export function initPro({ api, state, fmt, esc, toast, buildGroup, rerender, DEM
         rerender();
         toast('Welcome to Gigapolis Pro. Deep Clean and unlimited Demolish are unlocked.');
       };
-      card.querySelector('#pro-activate').onclick = doActivate;
-      card.querySelector('#pro-key').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') doActivate();
-      });
+      const actBtn = card.querySelector('#pro-activate');
+      if (actBtn) {
+        actBtn.onclick = doActivate;
+        card.querySelector('#pro-key').addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') doActivate();
+        });
+      }
     }
     card.querySelector('.close').onclick = () => (modal.hidden = true);
     modal.hidden = false;

@@ -53,8 +53,20 @@ function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now
     save();
   }
 
+  // App Store build: a StoreKit purchase (non-consumable) is Pro for life on
+  // this Mac. Signed to this computer like the allowance, so a copied plan
+  // file doesn't carry it; "Restore purchases" re-creates it from the Store.
+  const storeSig = (s) => crypto.createHmac('sha256', 'gigapolis-store:' + here).update(`${s.productId}|${s.transactionId || ''}`).digest('hex').slice(0, 32);
+  const storeOk = () => !!(data.store && data.store.productId && data.store.sig === storeSig(data.store));
+  function setStorePurchase({ productId, transactionId = null, date = null, state = 'purchased' }) {
+    const s = { productId, transactionId, date, state, at: now() };
+    data.store = { ...s, sig: storeSig(s) };
+    save();
+    return status();
+  }
+
   function isPro() {
-    if (forcePro || ownerOk) return true;
+    if (forcePro || ownerOk || storeOk()) return true;
     const l = data.licence;
     if (!l || l.owner || l.status === 'invalid' || l.machine !== here) return false;
     const age = now() - (l.validatedAt || 0);
@@ -113,11 +125,13 @@ function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now
       remainingBytes: pro ? null : Math.max(0, cfg.freeCapBytes - a.used),
       resetsAt: pro ? null : resetsAt(a.month),
       email: data.licence && data.licence.email,
-      keyHint: ownerOk ? 'Owner key' : data.licence ? '…' + data.licence.key.slice(-6) : null,
+      keyHint: ownerOk ? 'Owner key' : storeOk() ? 'App Store' : data.licence ? '…' + data.licence.key.slice(-6) : null,
+      // Bought as an In-App Purchase (App Store build).
+      storePurchase: storeOk(),
       // Seats: "used on 2 of 3 computers" (null when unknown / owner key).
       activations: !ownerOk && data.licence && data.licence.limit ? { used: data.licence.usage || 1, limit: data.licence.limit } : null,
       // Why a saved licence isn't giving Pro, so the UI can explain it.
-      licenceProblem: pro || !data.licence || ownerOk ? null : data.licence.machine !== here ? 'other-computer' : data.licence.status === 'invalid' ? 'invalid' : 'offline',
+      licenceProblem: pro || !data.licence || ownerOk || storeOk() ? null : data.licence.machine !== here ? 'other-computer' : data.licence.status === 'invalid' ? 'invalid' : 'offline',
       weekly: { ...data.weekly },
       priceLabel: cfg.priceLabel,
       devPro: forcePro,
@@ -250,7 +264,7 @@ function createLicence({ dir, fetchImpl = globalThis.fetch, now = () => Date.now
     return status();
   }
 
-  return { status, isPro, activate, revalidate, deactivate, checkAllowance, recordDemolished, setWeekly, checkoutUrl: cfg.checkoutUrl };
+  return { status, isPro, activate, revalidate, deactivate, checkAllowance, recordDemolished, setWeekly, setStorePurchase, checkoutUrl: cfg.checkoutUrl };
 }
 
 module.exports = { createLicence };
