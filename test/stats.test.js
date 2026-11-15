@@ -107,6 +107,8 @@ test('stats needs the key and sums everything read-only', async () => {
   assert.equal(out.body.site.rows.length, 1);
   assert.deepEqual(out.body.sales.last30, { orders: 2, refunds: 1, gross: 3998, refunded: 1999, net: 1999 });
   assert.equal(out.body.sales.allTime.orders, 3);
-  assert.equal(out.body.sales.testMode, true);
+  assert.equal(out.body.sales.testMode, false);
+  const testEnv = Object.assign({}, env, { STRIPE_SECRET_KEY: 'sk_test_abc' });
+  assert.equal((await handleStats(r('secret-key'), testEnv, f, NOW)).body.sales.testMode, true);
   assert.ok(calls.every((c) => c.method === 'GET'));
 });

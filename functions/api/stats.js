@@ -55,7 +55,7 @@ async function githubStats(fetchImpl) {
   return { byPlatform, total: byPlatform['mac-arm'] + byPlatform['mac-intel'] + byPlatform.win, releases: list.slice(0, 10) };
 }
 
-async function salesStats(db, now) {
+async function salesStats(db, now, env = {}) {
   if (!db) return { enabled: false };
   await ensureTables(db);
   const { results } = await db.prepare('SELECT amount, created_at, refunded_at, live FROM licences').all();
@@ -83,7 +83,7 @@ async function salesStats(db, now) {
   }
   return {
     enabled: true,
-    testMode: orders.length > 0 && orders.every((o) => !o.live),
+    testMode: /^sk_test_/.test(env.STRIPE_SECRET_KEY || ''),
     allTime: sum(orders),
     last30: sum(orders.filter((o) => o.created_at >= since)),
     perDay: days,
@@ -98,7 +98,7 @@ export async function handleStats(request, env, fetchImpl = fetch, now = Date.no
   const [site, downloads, sales] = await Promise.all([
     safe(siteStats(env.STATS_DB, now)),
     safe(githubStats(fetchImpl)),
-    safe(salesStats(dbOf(env), now)),
+    safe(salesStats(dbOf(env), now, env)),
   ]);
   return { status: 200, body: { generated: new Date(now).toISOString(), days: DAYS, site, downloads, sales } };
 }
