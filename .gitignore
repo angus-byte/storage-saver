@@ -5,3 +5,5 @@ demo/index.html
 .DS_Store
 src/renderer/demo-test.html
 src/renderer/timing-test.html
+# Mac App Store provisioning profiles (download from developer.apple.com; never commit)
+build/*.provisionprofile

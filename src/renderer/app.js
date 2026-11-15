@@ -3304,17 +3304,20 @@ function renderSysOther(wrap) {
   const total = sysTotal();
   $('files-head').innerHTML = `<button class="link" id="files-back">‹ All</button><span class="cat-title"><span class="dot" style="background:${hexColor('system')}"></span>System &amp; other users</span><span class="muted">${fmt(total)}</span>`;
   $('files-back').onclick = () => openCategory(null);
-  if (!IS_WIN && (api.sysSpace || DEMO)) return renderSysMac(wrap, total);
+  // App Store build: the sandbox can't measure the system volume, so the plain explanation is shown.
+  if (!IS_WIN && (api.sysSpace || DEMO) && !api.mas) return renderSysMac(wrap, total);
   wrap.innerHTML = `<p class="hint" style="margin:0 2px 8px">Space used on your disk outside your home folder. It isn’t files you made, and deleting things here by hand can break your ${IS_WIN ? 'PC' : 'Mac'}, so there is nothing to Demolish. What it usually holds:</p>
     <ul class="file-list sys-parts">${SYS_PARTS.map(([i, n, d]) => `<li class="row"><span class="icon">${i}</span><span class="name">${esc(n)}<small>${esc(d)}</small></span></li>`).join('')}</ul>
     <div class="row-actions" style="padding-left:0">
-      <button data-act="snap">${IS_WIN ? '🧽 Open Disk Cleanup' : '🕰 Clear Time Machine snapshots'}</button>
+      ${api.mas ? '' : `<button data-act="snap">${IS_WIN ? '🧽 Open Disk Cleanup' : '🕰 Clear Time Machine snapshots'}</button>`}
       <button data-act="safe">🧹 Safe Clean caches</button>
-      <button data-act="apps">📦 App Uninstaller</button>
+      ${api.mas ? '' : '<button data-act="apps">📦 App Uninstaller</button>'}
     </div>`;
-  wrap.querySelector('[data-act="snap"]').onclick = () => maint && maint.open && maint.open([IS_WIN ? 'cleanup' : 'snapshots']);
+  const snap = wrap.querySelector('[data-act="snap"]');
+  if (snap) snap.onclick = () => maint && maint.open && maint.open([IS_WIN ? 'cleanup' : 'snapshots']);
   wrap.querySelector('[data-act="safe"]').onclick = () => showTab('safe');
-  wrap.querySelector('[data-act="apps"]').onclick = openUninstaller;
+  const appsBtn = wrap.querySelector('[data-act="apps"]');
+  if (appsBtn) appsBtn.onclick = openUninstaller;
 }
 const sysTotal = () => (state.disk && state.disk.roots[0] ? Math.max(0, state.disk.roots[0].total - state.disk.roots[0].free - (state.tree ? state.tree.size : 0)) : 0);
 const openUninstaller = () => (cityHall && cityHall.open ? cityHall.open() : showTab('hall'));
@@ -3901,6 +3904,10 @@ async function runScan(root) {
   });
   try {
     const result = await api.scan(root || undefined);
+    if (result.cancelled) {
+      if (result.needsAccess) toast('Gigapolis needs access to a folder to measure it. Click Scan and choose your home folder, then Open.');
+      return;
+    }
     if (result.blocked) {
       toast(result.blocked.message);
       drives.open();

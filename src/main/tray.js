@@ -46,7 +46,7 @@ function createTray(opts) {
       toggle(MAC ? 'Keep running in menu bar' : 'Keep running in system tray', 'keepInTray'),
       toggle('Open at login', 'launchAtLogin'),
       { type: 'separator' },
-      { label: 'Check for Updates…', click: () => opts.checkUpdates && opts.checkUpdates() },
+      ...(opts.checkUpdates ? [{ label: 'Check for Updates…', click: () => opts.checkUpdates() }] : []),
       { label: 'Quit Gigapolis', click: () => opts.quit() },
     ]);
     tray.setContextMenu(menu);

@@ -1,6 +1,6 @@
 {
   "name": "storage-saver",
-  "version": "0.12.16",
+  "version": "0.12.17",
   "description": "Keeps your computer's storage low. 3D visualiser of where your space goes, plus safe one-click cleanup.",
   "main": "src/main/main.js",
   "scripts": {
@@ -9,7 +9,9 @@
     "test": "node --test test/*.test.js",
     "build:demo": "node scripts/build-demo.js",
     "dist": "electron-builder --mac dmg",
-    "dist:win": "electron-builder --win nsis --x64 --arm64"
+    "dist:win": "electron-builder --win nsis --x64 --arm64",
+    "dist:mas": "electron-builder --mac mas --universal",
+    "dist:mas-dev": "electron-builder --mac mas-dev --arm64"
   },
   "author": "Angus",
   "license": "MIT",
@@ -45,7 +47,10 @@
         "NSDownloadsFolderUsageDescription": "Gigapolis measures your Downloads so it can show them in the city.",
         "NSRemovableVolumesUsageDescription": "Gigapolis can measure external drives you choose.",
         "NSNetworkVolumesUsageDescription": "Gigapolis can measure network drives you choose.",
-        "NSPhotoLibraryUsageDescription": "Gigapolis measures the size of your Photos library."
+        "NSPhotoLibraryUsageDescription": "Gigapolis measures the size of your Photos library.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "LSApplicationCategoryType": "public.app-category.utilities",
+        "NSHumanReadableCopyright": "Copyright © 2026 Sommarfilms. All rights reserved."
       },
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
@@ -77,6 +82,34 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Gigapolis",
       "deleteAppDataOnUninstall": false
+    },
+    "mas": {
+      "type": "distribution",
+      "category": "public.app-category.utilities",
+      "hardenedRuntime": false,
+      "entitlements": "build/entitlements.mas.plist",
+      "entitlementsInherit": "build/entitlements.mas.inherit.plist",
+      "provisioningProfile": "build/embedded.provisionprofile",
+      "extraResources": [
+        {
+          "from": "build/PrivacyInfo.xcprivacy",
+          "to": "PrivacyInfo.xcprivacy"
+        }
+      ],
+      "artifactName": "${productName}-${version}-mas.${ext}"
+    },
+    "masDev": {
+      "type": "development",
+      "hardenedRuntime": false,
+      "entitlements": "build/entitlements.mas.plist",
+      "entitlementsInherit": "build/entitlements.mas.inherit.plist",
+      "provisioningProfile": "build/embedded-dev.provisionprofile",
+      "extraResources": [
+        {
+          "from": "build/PrivacyInfo.xcprivacy",
+          "to": "PrivacyInfo.xcprivacy"
+        }
+      ]
     }
   }
 }
